@@ -5,19 +5,63 @@ import { sync_configuree } from './config.js'
 import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion } from './drive.js'
 
 // ---------------------------------------------------------------
-// MonMind — Phase 3 : squelette + cartes locales + sync Google Drive.
-// Les cartes vivent dans IndexedDB (voir db.js) et se synchronisent
-// avec ton dossier Google Drive (voir drive.js). Tags IA en Phase 5.
+// MonMind — interface façon mymind : accueil (recherche serif +
+// mosaïque), vue détail plein écran teintée, écran Espaces en piles.
+// Les cartes vivent dans IndexedDB (db.js) et se synchronisent avec
+// Google Drive (drive.js).
 // ---------------------------------------------------------------
 
 function domaineDe(url) {
   try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url }
 }
 
+// Une couleur stable par tag (même tag → même couleur), pour les anneaux.
+function couleurTag(tag) {
+  let h = 0
+  for (let i = 0; i < tag.length; i++) h = (h * 31 + tag.charCodeAt(i)) % 360
+  return `hsl(${h}, 60%, 52%)`
+}
+
+// Date relative simple (« il y a 3 jours »).
+function dateRelative(ts) {
+  const s = Math.floor((Date.now() - ts) / 1000)
+  if (s < 60) return "à l'instant"
+  const m = Math.floor(s / 60); if (m < 60) return `il y a ${m} min`
+  const h = Math.floor(m / 60); if (h < 24) return `il y a ${h} h`
+  const j = Math.floor(h / 24); if (j < 30) return `il y a ${j} j`
+  const mo = Math.floor(j / 30); if (mo < 12) return `il y a ${mo} mois`
+  return `il y a ${Math.floor(mo / 12)} an(s)`
+}
+
+// Couleur dominante d'une image (moyenne sur un petit canvas). Renvoie
+// [r,g,b] ou null si l'image est inaccessible (CORS) ou absente.
+function couleurDominante(src) {
+  return new Promise((resolve) => {
+    if (!src) return resolve(null)
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      try {
+        const c = document.createElement('canvas')
+        c.width = 24; c.height = 24
+        const ctx = c.getContext('2d')
+        ctx.drawImage(img, 0, 0, 24, 24)
+        const d = ctx.getImageData(0, 0, 24, 24).data
+        let r = 0, g = 0, b = 0, n = 0
+        for (let i = 0; i < d.length; i += 4) {
+          if (d[i + 3] < 128) continue
+          r += d[i]; g += d[i + 1]; b += d[i + 2]; n++
+        }
+        if (!n) return resolve(null)
+        resolve([Math.round(r / n), Math.round(g / n), Math.round(b / n)])
+      } catch { resolve(null) }
+    }
+    img.onerror = () => resolve(null)
+    img.src = src
+  })
+}
+
 // --- Capture depuis l'extension navigateur -----------------------
-// L'extension ouvre l'app avec ?via=ext puis, via son pont (bridge.js),
-// envoie le contenu lisible de la page par postMessage. On écoute ça
-// dès le chargement du module (avant même le montage de React).
 let _extCapture = null
 let _extListener = null
 if (typeof window !== 'undefined') {
@@ -29,83 +73,87 @@ if (typeof window !== 'undefined') {
   })
 }
 
-// Crée une carte-lien à partir d'une capture (extension, bookmarklet…).
 function creerCarteLien(cap) {
   return ajouterCarte({
     type: 'lien',
     url: cap.url || '',
     titre: (cap.titre || '').trim(),
     apercu: cap.image || '',
-    texte: (cap.texte || cap.selection || '').trim() // contenu lisible de la page
+    texte: (cap.texte || cap.selection || '').trim()
   })
 }
 
-function Carte({ carte, onOuvrir, onModif }) {
-  // Pour les images stockées en Blob, on fabrique une URL d'affichage
-  // (et on la libère quand la carte disparaît de l'écran).
+// Petite vignette (gère les images stockées en Blob → URL d'affichage).
+function useSrcImage(carte) {
   const [src, setSrc] = useState(null)
   useEffect(() => {
-    if (carte.image) {
+    if (carte?.image) {
       const u = URL.createObjectURL(carte.image)
       setSrc(u)
       return () => URL.revokeObjectURL(u)
+    } else {
+      setSrc(null)
     }
-  }, [carte.image])
+  }, [carte?.image])
+  return src
+}
 
-  const date = new Date(carte.creeLe).toLocaleDateString('fr-FR', {
-    day: 'numeric', month: 'short'
-  })
+// --- Une carte dans la mosaïque ----------------------------------
+function Carte({ carte, onOuvrir, onModif }) {
+  const src = useSrcImage(carte)
 
-  // Cliquer une carte ouvre sa vue détail (contenu, tags, note).
-  function surClic() {
-    onOuvrir(carte, src)
-  }
+  // La « légende » sous la carte (façon mymind) : le texte d'une image,
+  // ou le domaine d'un lien.
+  const legende = carte.type === 'image'
+    ? (carte.texte || '')
+    : carte.type === 'lien'
+      ? domaineDe(carte.url)
+      : ''
 
   return (
-    <article className="carte cliquable" onClick={surClic}>
-      {carte.type === 'lien' && !carte.apercu && <div className="accent-lien" />}
-      {carte.type === 'lien' && carte.apercu && (
-        <img className="apercu-lien" src={carte.apercu} alt="" loading="lazy"
-             onError={e => { e.currentTarget.style.display = 'none' }} />
-      )}
-      {src && <img src={src} alt={carte.texte || 'Image sauvegardée'} />}
-      {(carte.type !== 'image' || carte.texte) && (
-        <div className="contenu">
-          {carte.type === 'lien' ? (
-            <>
-              <p className="lien-titre">{carte.titre || carte.url}</p>
-              <p className="lien-domaine">{domaineDe(carte.url)}</p>
-              {carte.texte && <p className="texte lien-extrait">{carte.texte}</p>}
-            </>
-          ) : (
-            carte.texte && <p className="texte">{carte.texte}</p>
-          )}
-          {carte.tags && carte.tags.length > 0 && (
-            <div className="carte-tags">
-              {carte.tags.slice(0, 4).map(t => <span key={t} className="mini-tag">{t}</span>)}
-            </div>
-          )}
-          <p className="date">{date}</p>
-        </div>
-      )}
-      <button
-        className="supprimer"
-        title="Supprimer"
-        onClick={e => { e.stopPropagation(); supprimerCarte(carte.id).then(onModif) }}
-      >×</button>
-    </article>
+    <div className="brique">
+      <article className="carte cliquable" onClick={() => onOuvrir(carte, src)}>
+        {carte.type === 'lien' && !carte.apercu && <div className="accent-lien" />}
+        {carte.type === 'lien' && carte.apercu && (
+          <img className="apercu-lien" src={carte.apercu} alt="" loading="lazy"
+               onError={e => { e.currentTarget.style.display = 'none' }} />
+        )}
+        {src && <img src={src} alt={carte.texte || 'Image'} />}
+
+        {carte.type === 'lien' && (
+          <div className="contenu">
+            <p className="lien-titre">{carte.titre || carte.url}</p>
+            {carte.texte && <p className="texte lien-extrait">{carte.texte}</p>}
+          </div>
+        )}
+        {carte.type === 'note' && carte.texte && (
+          <div className="contenu">
+            <p className="texte note-serif">{carte.texte}</p>
+          </div>
+        )}
+
+        <button
+          className="supprimer"
+          title="Supprimer"
+          onClick={e => { e.stopPropagation(); supprimerCarte(carte.id).then(onModif) }}
+        >×</button>
+      </article>
+      {legende && <p className="legende">{legende}</p>}
+    </div>
   )
 }
 
-// Vue DÉTAIL d'une carte : contenu (image / article), tags éditables,
-// et une note personnelle. Façon panneau de détail de mymind.
+// --- Vue DÉTAIL plein écran (façon mymind) -----------------------
 function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif }) {
   const [tags, setTags] = useState(carte.tags || [])
   const [nouveauTag, setNouveauTag] = useState('')
+  const [ajoutTag, setAjoutTag] = useState(false)
   const [mesEspaces, setMesEspaces] = useState(carte.espaces || [])
-  // Pour une carte-note, la « note » édite son texte ; sinon un champ à part.
   const champNote = carte.type === 'note' ? 'texte' : 'note'
   const [note, setNote] = useState(carte[champNote] || '')
+  const [teinte, setTeinte] = useState(null)
+
+  const image = src || (carte.type === 'lien' ? carte.apercu : null)
 
   useEffect(() => {
     const surTouche = e => { if (e.key === 'Escape') fermer() }
@@ -113,9 +161,16 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif }) {
     return () => window.removeEventListener('keydown', surTouche)
   }, [fermer])
 
+  // Couleur dominante de l'image → fond teinté du panneau.
+  useEffect(() => {
+    let vivant = true
+    couleurDominante(image).then(c => { if (vivant && c) setTeinte(c) })
+    return () => { vivant = false }
+  }, [image])
+
   function ajouterTag() {
     const t = nouveauTag.trim().toLowerCase()
-    setNouveauTag('')
+    setNouveauTag(''); setAjoutTag(false)
     if (!t || tags.includes(t)) return
     const maj = [...tags, t]
     setTags(maj)
@@ -129,96 +184,115 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif }) {
   function sauverNote() {
     if (note !== (carte[champNote] || '')) majCarte(carte.id, { [champNote]: note }).then(onModif)
   }
-  function basculerEspace(espaceId) {
-    const epingler = !mesEspaces.includes(espaceId)
-    basculerEpingle({ ...carte, espaces: mesEspaces }, espaceId, epingler)
+  function basculerEspace(id) {
+    const epingler = !mesEspaces.includes(id)
+    basculerEpingle({ ...carte, espaces: mesEspaces }, id, epingler)
       .then(maj => { setMesEspaces(maj); onModif() })
   }
+  function jeter() {
+    supprimerCarte(carte.id).then(() => { onModif(); fermer() })
+  }
 
-  const image = src || (carte.type === 'lien' ? carte.apercu : null)
+  const fond = teinte
+    ? `rgb(${teinte[0]}, ${teinte[1]}, ${teinte[2]})`
+    : 'hsl(222, 22%, 22%)'
+  const titre = carte.titre || (carte.type === 'note' ? 'Note' : carte.type === 'image' ? 'Image' : domaineDe(carte.url))
 
   return (
-    <div className="voile-visionneuse" onClick={fermer}>
-      <button className="fermer-visionneuse" title="Fermer" onClick={fermer}>×</button>
-      <div className="cadre-detail" onClick={e => e.stopPropagation()}>
-        {/* --- Contenu --- */}
-        {carte.type === 'lien' && (
-          <>
-            {carte.titre && <h1 className="detail-titre">{carte.titre}</h1>}
-            {carte.url && (
-              <a className="lecture-source" href={carte.url} target="_blank" rel="noreferrer">
-                {domaineDe(carte.url)} ↗
-              </a>
-            )}
-            {image && <img className="detail-image" src={image} alt=""
-                           onError={e => { e.currentTarget.style.display = 'none' }} />}
-            {carte.texte && <div className="lecture-texte">{carte.texte}</div>}
-          </>
-        )}
-        {carte.type === 'image' && src && (
-          <img className="detail-image" src={src} alt={carte.texte || 'Image'} />
-        )}
+    <div className="detail-voile" style={{ background: fond }} onClick={fermer}>
+      <button className="detail-fermer" title="Fermer" onClick={fermer}>×</button>
 
-        {/* --- Tags --- */}
-        <div className="detail-section">
-          <div className="detail-label">Tags</div>
-          <div className="tags-editeur">
-            {tags.map(t => (
-              <span key={t} className="tag-chip">
-                {t}
-                <button title="Retirer" onClick={() => retirerTag(t)}>×</button>
-              </span>
-            ))}
-            <input
-              className="tag-input"
-              placeholder="+ tag"
-              list="tags-connus"
-              value={nouveauTag}
-              onChange={e => setNouveauTag(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); ajouterTag() } }}
-              onBlur={ajouterTag}
-            />
-            {/* Suggestions : tes tags déjà utilisés, pour rester cohérent */}
-            <datalist id="tags-connus">
-              {tousTags.filter(t => !tags.includes(t)).map(t => <option key={t} value={t} />)}
-            </datalist>
-          </div>
-        </div>
-
-        {/* --- Note --- */}
-        <div className="detail-section">
-          <div className="detail-label">{carte.type === 'note' ? 'Note' : 'Ta note'}</div>
-          <textarea
-            className="note-editeur"
-            placeholder="Écris une note…"
-            value={note}
-            onChange={e => setNote(e.target.value)}
-            onBlur={sauverNote}
-          />
-        </div>
-
-        {/* --- Espaces (épinglage manuel) --- */}
-        {espaces.length > 0 && (
-          <div className="detail-section">
-            <div className="detail-label">Espaces</div>
-            <div className="espaces-editeur">
-              {espaces.map(e => (
-                <button
-                  key={e.id}
-                  className={'espace-toggle' + (mesEspaces.includes(e.id) ? ' actif' : '')}
-                  onClick={() => basculerEspace(e.id)}
-                >
-                  {mesEspaces.includes(e.id) ? '✓ ' : '+ '}{e.titre}
-                </button>
-              ))}
+      <div className="detail-scene" onClick={e => e.stopPropagation()}>
+        {/* Colonne gauche : le contenu */}
+        <div className="detail-contenu">
+          {carte.type === 'lien' && (
+            <div className="dc-carte">
+              {carte.titre && <h1 className="dc-titre">{carte.titre}</h1>}
+              {carte.url && (
+                <a className="dc-source" href={carte.url} target="_blank" rel="noreferrer">
+                  {domaineDe(carte.url)} ↗
+                </a>
+              )}
+              {image && <img className="dc-image" src={image} alt=""
+                             onError={e => { e.currentTarget.style.display = 'none' }} />}
+              {carte.texte && <div className="dc-texte">{carte.texte}</div>}
             </div>
+          )}
+          {carte.type === 'image' && src && (
+            <img className="dc-image-nue" src={src} alt={carte.texte || 'Image'} />
+          )}
+          {carte.type === 'note' && (
+            <div className="dc-carte dc-note">
+              <p className="dc-note-texte">{carte.texte}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Colonne droite : le panneau d'infos */}
+        <aside className="detail-panneau">
+          <div className="dp-haut">
+            <h2 className="dp-titre">{titre}</h2>
+            <p className="dp-date">{dateRelative(carte.creeLe)}</p>
+
+            <div className="dp-label">Tags</div>
+            <div className="tags-editeur">
+              <button className="tag-ajout" onClick={() => setAjoutTag(true)}>+ tag</button>
+              {tags.map(t => (
+                <span key={t} className="tag-chip">
+                  <span className="anneau" style={{ borderColor: couleurTag(t) }} />
+                  {t}
+                  <button title="Retirer" onClick={() => retirerTag(t)}>×</button>
+                </span>
+              ))}
+              {ajoutTag && (
+                <input
+                  className="tag-input" autoFocus placeholder="nom du tag…"
+                  list="tags-connus" value={nouveauTag}
+                  onChange={e => setNouveauTag(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') { e.preventDefault(); ajouterTag() }
+                    if (e.key === 'Escape') { setNouveauTag(''); setAjoutTag(false) }
+                  }}
+                  onBlur={ajouterTag}
+                />
+              )}
+              <datalist id="tags-connus">
+                {tousTags.filter(t => !tags.includes(t)).map(t => <option key={t} value={t} />)}
+              </datalist>
+            </div>
+
+            <div className="dp-label">Note</div>
+            <textarea
+              className="note-editeur" placeholder="Écris une note…"
+              value={note} onChange={e => setNote(e.target.value)} onBlur={sauverNote}
+            />
+
+            {espaces.length > 0 && (
+              <>
+                <div className="dp-label">Espaces</div>
+                <div className="espaces-editeur">
+                  {espaces.map(e => (
+                    <button
+                      key={e.id}
+                      className={'espace-toggle' + (mesEspaces.includes(e.id) ? ' actif' : '')}
+                      onClick={() => basculerEspace(e.id)}
+                    >{mesEspaces.includes(e.id) ? '✓ ' : '+ '}{e.titre}</button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
-        )}
+
+          <div className="dp-actions">
+            <button className="dp-icone dp-jeter" title="Supprimer" onClick={jeter}>🗑</button>
+          </div>
+        </aside>
       </div>
     </div>
   )
 }
 
+// --- Composeur (ajout d'une carte) -------------------------------
 function Composeur({ fermer, onAjout }) {
   const [texte, setTexte] = useState('')
   const [image, setImage] = useState(null)
@@ -233,13 +307,10 @@ function Composeur({ fermer, onAjout }) {
     setImage(fichier)
     setApercu(URL.createObjectURL(fichier))
   }
-
-  // Coller une image directement dans le composeur (Cmd+V)
   function surCollage(e) {
     const item = [...e.clipboardData.items].find(i => i.type.startsWith('image/'))
     if (item) { e.preventDefault(); choisirImage(item.getAsFile()) }
   }
-
   async function enregistrer() {
     const propre = texte.trim()
     if (!propre && !image) return
@@ -288,9 +359,9 @@ function Composeur({ fermer, onAjout }) {
   )
 }
 
-// Petit crochet qui gère toute la synchronisation Drive.
+// --- Synchronisation Drive ---------------------------------------
 function useSync() {
-  const [etat, setEtat] = useState('inconnu') // inconnu | deconnecte | pret | sync | ok | erreur
+  const [etat, setEtat] = useState('inconnu')
   const timer = useRef(null)
 
   const lancer = useCallback(async () => {
@@ -301,8 +372,6 @@ function useSync() {
       setEtat('ok')
     } catch (e) {
       console.error('[sync]', e)
-      // Jeton perdu / non renouvelable en silence → on réaffiche le
-      // bouton « Connecter » au lieu de rester bloqué sur « Sync… ».
       if (e instanceof BesoinReconnexion || e?.name === 'BesoinReconnexion') {
         await deconnecter().catch(() => {})
         setEtat('deconnecte')
@@ -312,14 +381,12 @@ function useSync() {
     }
   }, [])
 
-  // Planifie une sync (anti-rebond) après une modification locale.
   const planifier = useCallback(() => {
     if (!sync_configuree()) return
     clearTimeout(timer.current)
     timer.current = setTimeout(lancer, 1500)
   }, [lancer])
 
-  // Au démarrage : si déjà connecté, on initialise et on synchronise.
   useEffect(() => {
     if (!sync_configuree()) { setEtat('non_configure'); return }
     (async () => {
@@ -328,7 +395,6 @@ function useSync() {
       else setEtat('deconnecte')
     })().catch(e => { console.error(e); setEtat('erreur') })
 
-    // Sync périodique + à chaque retour sur l'onglet
     const intervalle = setInterval(lancer, 60000)
     const surFocus = () => lancer()
     window.addEventListener('focus', surFocus)
@@ -344,26 +410,22 @@ function useSync() {
 }
 
 function StatutSync({ etat, brancher, lancer }) {
-  if (etat === 'non_configure') return <span className="statut-sync">Local — Drive bientôt</span>
+  if (etat === 'non_configure') return <span className="rail-sync" title="Local">●</span>
   if (etat === 'deconnecte' || etat === 'inconnu')
-    return <button className="bouton-drive" onClick={brancher}>Connecter Google Drive</button>
-  const libelle = { sync: 'Synchronisation…', ok: 'Synchronisé ✓', pret: 'Synchronisé ✓', erreur: 'Erreur de sync' }[etat] || ''
+    return <button className="rail-bouton rail-connecter" title="Connecter Google Drive" onClick={brancher}>Drive</button>
+  const titre = { sync: 'Synchronisation…', ok: 'Synchronisé', pret: 'Synchronisé', erreur: 'Erreur de sync' }[etat] || ''
   return (
-    <button className="statut-sync cliquable-sync" title="Synchroniser maintenant" onClick={lancer}>
-      {etat === 'sync' && <span className="point-sync" />}{libelle}
+    <button className={'rail-sync cliquable ' + etat} title={titre + ' — cliquer pour synchroniser'} onClick={lancer}>
+      {etat === 'sync' ? <span className="point-sync" /> : '●'}
     </button>
   )
 }
 
-// Capture externe : l'app est ouverte avec des paramètres d'URL
-// (?c=1&type=lien&url=…&titre=…&img=…&note=…) par le bookmarklet Mac ou
-// le Raccourci iOS. On crée la carte, on synchronise, et on confirme.
-// Lit les paramètres de capture depuis l'URL, une fois, au démarrage.
-// (?c=1&type=…&url=…&titre=…&img=…&note=…) — bookmarklet Mac / Raccourci iOS.
+// --- Capture externe (bookmarklet / iOS) -------------------------
 function lireCapture() {
   const p = new URLSearchParams(window.location.search)
   if (!p.get('c')) return null
-  if (p.get('via') === 'ext') return null // géré par le mode extension
+  if (p.get('via') === 'ext') return null
   return {
     type: p.get('type') === 'note' ? 'note' : 'lien',
     url: p.get('url') || '',
@@ -374,9 +436,6 @@ function lireCapture() {
   }
 }
 
-// Vue dédiée affichée dans la petite fenêtre ouverte par l'extension :
-// reçoit le contenu de la page, crée la carte, confirme. La fenêtre est
-// refermée par l'extension au bout de quelques secondes.
 function CaptureExt() {
   const [carte, setCarte] = useState(null)
   const [erreur, setErreur] = useState(false)
@@ -410,17 +469,49 @@ function CaptureExt() {
   )
 }
 
+// --- Une pile de cartes pour l'écran Espaces ---------------------
+function Vignette({ carte }) {
+  const src = useSrcImage(carte)
+  const img = src || (carte.type === 'lien' ? carte.apercu : null)
+  if (img) return <img className="pile-img" src={img} alt="" onError={e => { e.currentTarget.style.display = 'none' }} />
+  return <div className="pile-note"><span>{(carte.texte || carte.titre || '').slice(0, 90)}</span></div>
+}
+
+function PileEspace({ espace, membres, onOuvrir }) {
+  const apercu = membres.slice(0, 5)
+  return (
+    <button className="pile" onClick={() => onOuvrir(espace)}>
+      <div className="pile-tas">
+        {apercu.length === 0 && <div className="pile-vide">Espace vide</div>}
+        {apercu.map((c, i) => (
+          <div className={'pile-feuille f' + i} key={c.id}><Vignette carte={c} /></div>
+        ))}
+      </div>
+      <div className="pile-legende">
+        <span className="anneau" style={{ borderColor: couleurTag(espace.titre || 'espace') }} />
+        {espace.titre}
+        <span className="pile-compte">{membres.length}</span>
+      </div>
+    </button>
+  )
+}
+
+// =================================================================
 export default function App() {
   const [modeExt] = useState(() => new URLSearchParams(window.location.search).get('via') === 'ext')
+  const [vue, setVue] = useState('tout') // tout | espaces | serendipity
   const [recherche, setRecherche] = useState('')
   const [composeurOuvert, setComposeurOuvert] = useState(false)
-  const [ouverte, setOuverte] = useState(null) // { carte, src } pour la visionneuse
-  // Capture lue SYNCHRONIQUEMENT à l'init (garantit que la confirmation
-  // s'affiche dès le premier rendu, contrairement à un setState async).
+  const [ouverte, setOuverte] = useState(null)
   const [capture, setCapture] = useState(lireCapture)
+  const [tagActif, setTagActif] = useState(null)
+  const [espaceActif, setEspaceActif] = useState(null)
+  const [creationEspace, setCreationEspace] = useState(false)
+  const [nomEspace, setNomEspace] = useState('')
+  const [graine, setGraine] = useState(0)
   const sync = useSync()
 
-  // Crée réellement la carte à partir des paramètres de capture (une fois).
+  // Capture (bookmarklet / iOS) — création réelle de la carte, une fois.
   const syncRef = useRef(sync.planifier)
   syncRef.current = sync.planifier
   const fermerCapture = useCallback(() => setCapture(null), [])
@@ -437,21 +528,12 @@ export default function App() {
       }
       window.history.replaceState(null, '', import.meta.env.BASE_URL)
       syncRef.current?.()
-      // Ouverte en petite fenêtre par le bookmarklet : on referme la
-      // fenêtre après avoir montré la confirmation (l'utilisateur reste
-      // sur sa page). Sinon (onglet iOS), la confirmation se ferme au clic.
       if (capture.popup) setTimeout(() => window.close(), 2200)
     })().catch(e => console.error('[capture]', e))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const [tagActif, setTagActif] = useState(null)
-  const [espaceActif, setEspaceActif] = useState(null) // id d'un espace, ou null (Tout)
-
-  // useLiveQuery : la grille se met à jour toute seule dès que la base
-  // change. On sépare les espaces (cartes de type 'espace') des cartes de
-  // contenu, on calcule la liste des tags, et on filtre la grille par
-  // espace + tag + recherche.
+  // Données : sépare espaces / contenu, calcule les tags, filtre.
   const donnees = useLiveQuery(async () => {
     const toutes = await db.cartes.orderBy('creeLe').reverse().toArray()
     const visibles = toutes.filter(c => !c.supprime)
@@ -475,146 +557,214 @@ export default function App() {
       (c.note || '').toLowerCase().includes(q) ||
       (c.tags || []).some(t => t.includes(q))
     )
-    return { liste, tags, espaces }
+    return { liste, tags, espaces, contenu }
   }, [recherche, tagActif, espaceActif])
+
   const cartes = donnees?.liste
   const tousTags = donnees?.tags || []
   const espaces = donnees?.espaces || []
+  const contenu = donnees?.contenu || []
 
-  // Si l'espace actif est supprimé ailleurs, on revient sur « Tout ».
   useEffect(() => {
     if (espaceActif && !espaces.some(e => e.id === espaceActif)) setEspaceActif(null)
   }, [espaces, espaceActif])
 
-  const [creationEspace, setCreationEspace] = useState(false)
-  const [nomEspace, setNomEspace] = useState('')
-
   async function validerNouvelEspace() {
     const nom = nomEspace.trim()
-    setNomEspace('')
-    setCreationEspace(false)
+    setNomEspace(''); setCreationEspace(false)
     if (!nom) return
     const e = await creerEspace(nom)
-    setEspaceActif(e.id)
+    setEspaceActif(e.id); setVue('tout')
     sync.planifier()
   }
-
   function supprimerEspaceActif() {
     const e = espaces.find(x => x.id === espaceActif)
     if (!e) return
     if (!window.confirm(`Supprimer l'espace « ${e.titre} » ? (les cartes ne sont pas supprimées)`)) return
     supprimerEspace(e.id).then(() => { setEspaceActif(null); sync.planifier() })
   }
+  function ouvrirEspace(e) { setEspaceActif(e.id); setTagActif(null); setVue('tout') }
 
-  // Mode extension : petite fenêtre de capture dédiée (pas la grille).
   if (modeExt) return <CaptureExt />
 
+  const espaceCourant = espaceActif ? espaces.find(e => e.id === espaceActif) : null
+
+  // Serendipity : un échantillon mélangé du contenu.
+  const melange = (() => {
+    const a = [...contenu]
+    let s = graine + 1
+    for (let i = a.length - 1; i > 0; i--) {
+      s = (s * 9301 + 49297) % 233280
+      const j = Math.floor((s / 233280) * (i + 1))
+      ;[a[i], a[j]] = [a[j], a[i]]
+    }
+    return a.slice(0, 16)
+  })()
+
   return (
-    <>
-      <header className="barre">
-        <div className="logo"><span className="pastille" />MonMind</div>
-        <input
-          className="recherche"
-          type="search"
-          placeholder="Rechercher dans ton mind…"
-          value={recherche}
-          onChange={e => setRecherche(e.target.value)}
-        />
-        <StatutSync etat={sync.etat} brancher={sync.brancher} lancer={sync.lancer} />
-      </header>
+    <div className="app">
+      {/* ---- Rail gauche ---- */}
+      <aside className="rail">
+        <div className="rail-orbe" />
+        <div className="rail-marque">MonMind</div>
+        <div className="rail-bas">
+          <StatutSync etat={sync.etat} brancher={sync.brancher} lancer={sync.lancer} />
+          <a className="rail-bouton" href="capturer.html" title="Configurer la capture">⚙</a>
+        </div>
+      </aside>
 
-      <nav className="barre-espaces">
-        <button
-          className={'espace-onglet' + (espaceActif === null ? ' actif' : '')}
-          onClick={() => setEspaceActif(null)}
-        >Tout</button>
-        {espaces.map(e => (
-          <button
-            key={e.id}
-            className={'espace-onglet' + (espaceActif === e.id ? ' actif' : '')}
-            onClick={() => setEspaceActif(e.id)}
-          >{e.titre}</button>
-        ))}
-        {creationEspace ? (
-          <input
-            className="espace-nouveau-champ"
-            autoFocus
-            placeholder="Nom de l'espace…"
-            value={nomEspace}
-            onChange={e => setNomEspace(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') validerNouvelEspace()
-              if (e.key === 'Escape') { setNomEspace(''); setCreationEspace(false) }
-            }}
-            onBlur={validerNouvelEspace}
-          />
-        ) : (
-          <button className="espace-onglet espace-ajouter" onClick={() => setCreationEspace(true)}>
-            ＋ Espace
-          </button>
+      {/* ---- Zone principale ---- */}
+      <div className="zone">
+        <nav className="nav-haut">
+          <button className={'nav-lien' + (vue === 'tout' ? ' actif' : '')}
+                  onClick={() => setVue('tout')}>Tout</button>
+          <button className={'nav-lien' + (vue === 'espaces' ? ' actif' : '')}
+                  onClick={() => setVue('espaces')}>Espaces</button>
+          <button className={'nav-lien' + (vue === 'serendipity' ? ' actif' : '')}
+                  onClick={() => { setGraine(g => g + 1); setVue('serendipity') }}>Serendipity</button>
+        </nav>
+
+        {/* ====== VUE TOUT ====== */}
+        {vue === 'tout' && (
+          <>
+            <div className="hero">
+              <input
+                className="hero-recherche"
+                type="search"
+                placeholder="Rechercher dans mon mind…"
+                value={recherche}
+                onChange={e => setRecherche(e.target.value)}
+              />
+            </div>
+
+            {espaceCourant && (
+              <div className="fil-espace">
+                <span className="anneau" style={{ borderColor: couleurTag(espaceCourant.titre || 'e') }} />
+                <strong>{espaceCourant.titre}</strong>
+                <button className="fil-fermer" onClick={() => setEspaceActif(null)}>✕ tout revoir</button>
+                <button className="fil-supprimer" onClick={supprimerEspaceActif}>Supprimer l'espace</button>
+              </div>
+            )}
+
+            {tousTags.length > 0 && (
+              <div className="barre-tags">
+                {tousTags.map(t => (
+                  <button
+                    key={t}
+                    className={'pastille-tag' + (tagActif === t ? ' actif' : '')}
+                    onClick={() => setTagActif(tagActif === t ? null : t)}
+                  >
+                    <span className="anneau" style={{ borderColor: couleurTag(t) }} />{t}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {cartes && cartes.length === 0 && !recherche && !tagActif && !espaceActif && (
+              <div className="vide">
+                <div className="orbe" />
+                <h2>Ton mind est vide. Pour l'instant.</h2>
+                <p>Garde une pensée, un lien ou une image avec le bouton +.
+                   Connecte Google Drive (à gauche) pour retrouver tes cartes partout.</p>
+                <p style={{ marginTop: 18 }}>
+                  <a className="lien-config" href="capturer.html">Configurer la capture (Mac &amp; iPhone) →</a>
+                </p>
+              </div>
+            )}
+            {cartes && cartes.length === 0 && espaceActif && !recherche && !tagActif && (
+              <div className="vide">
+                <div className="orbe" />
+                <h2>Cet espace est vide.</h2>
+                <p>Ouvre une carte et épingle-la à cet espace depuis sa vue détail.</p>
+              </div>
+            )}
+            {cartes && cartes.length === 0 && (recherche || tagActif) && (
+              <div className="vide"><h2>Rien trouvé.</h2><p>Essaie un autre mot ou un autre tag.</p></div>
+            )}
+
+            <main className="grille">
+              {cartes?.map(c => (
+                <Carte key={c.id} carte={c}
+                       onOuvrir={(carte, src) => setOuverte({ carte, src })}
+                       onModif={sync.planifier} />
+              ))}
+            </main>
+          </>
         )}
-        {espaceActif && (
-          <button className="espace-supprimer" title="Supprimer cet espace" onClick={supprimerEspaceActif}>
-            Supprimer l'espace
-          </button>
+
+        {/* ====== VUE ESPACES ====== */}
+        {vue === 'espaces' && (
+          <>
+            <div className="entete-vue">
+              <h1 className="titre-serif">Tous les espaces</h1>
+              {creationEspace ? (
+                <input
+                  className="espace-nouveau-champ" autoFocus placeholder="Nom de l'espace…"
+                  value={nomEspace} onChange={e => setNomEspace(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') validerNouvelEspace()
+                    if (e.key === 'Escape') { setNomEspace(''); setCreationEspace(false) }
+                  }}
+                  onBlur={validerNouvelEspace}
+                />
+              ) : (
+                <button className="bouton-creer-espace" onClick={() => setCreationEspace(true)}>
+                  <span className="anneau" style={{ borderColor: 'hsl(18, 85%, 55%)' }} />Créer un espace
+                </button>
+              )}
+            </div>
+
+            {espaces.length === 0 && (
+              <div className="vide">
+                <div className="orbe" />
+                <h2>Aucun espace pour l'instant.</h2>
+                <p>Crée un espace pour regrouper des cartes (projets, idées, envies…),
+                   puis épingle des cartes dedans depuis leur vue détail.</p>
+              </div>
+            )}
+
+            <div className="piles">
+              {espaces.map(e => (
+                <PileEspace
+                  key={e.id}
+                  espace={e}
+                  membres={contenu.filter(c => (c.espaces || []).includes(e.id))}
+                  onOuvrir={ouvrirEspace}
+                />
+              ))}
+            </div>
+          </>
         )}
-      </nav>
 
-      {tousTags.length > 0 && (
-        <div className="barre-tags">
-          {tousTags.map(t => (
-            <button
-              key={t}
-              className={'pastille-tag' + (tagActif === t ? ' actif' : '')}
-              onClick={() => setTagActif(tagActif === t ? null : t)}
-            >{t}</button>
-          ))}
-        </div>
-      )}
+        {/* ====== VUE SERENDIPITY ====== */}
+        {vue === 'serendipity' && (
+          <>
+            <div className="entete-vue">
+              <h1 className="titre-serif">Serendipity</h1>
+              <button className="bouton-creer-espace" onClick={() => setGraine(g => g + 1)}>
+                ↻ Mélanger
+              </button>
+            </div>
+            {contenu.length === 0 ? (
+              <div className="vide"><div className="orbe" /><h2>Rien à redécouvrir encore.</h2>
+                <p>Garde quelques cartes, puis reviens ici pour retomber dessus par hasard.</p></div>
+            ) : (
+              <main className="grille">
+                {melange.map(c => (
+                  <Carte key={c.id} carte={c}
+                         onOuvrir={(carte, src) => setOuverte({ carte, src })}
+                         onModif={sync.planifier} />
+                ))}
+              </main>
+            )}
+          </>
+        )}
+      </div>
 
-      {cartes && cartes.length === 0 && !recherche && !tagActif && !espaceActif && (
-        <div className="vide">
-          <div className="orbe" />
-          <h2>Ton mind est vide. Pour l'instant.</h2>
-          <p>
-            Garde une pensée, un lien ou une image avec le bouton +.
-            Connecte Google Drive en haut à droite pour retrouver tes
-            cartes sur tous tes appareils.
-          </p>
-          <p style={{ marginTop: 18 }}>
-            <a className="lien-config" href="capturer.html">
-              Configurer la capture (Mac & iPhone) →
-            </a>
-          </p>
-        </div>
-      )}
-
-      {cartes && cartes.length === 0 && espaceActif && !recherche && !tagActif && (
-        <div className="vide">
-          <div className="orbe" />
-          <h2>Cet espace est vide.</h2>
-          <p>
-            Ouvre une carte et épingle-la à cet espace depuis sa vue détail
-            (section « Espaces »).
-          </p>
-        </div>
-      )}
-
-      <main className="grille">
-        {cartes?.map(c => (
-          <Carte
-            key={c.id}
-            carte={c}
-            onOuvrir={(carte, src) => setOuverte({ carte, src })}
-            onModif={sync.planifier}
-          />
-        ))}
-      </main>
-
+      {/* ---- Bouton + ---- */}
       <button className="ajouter" title="Ajouter" onClick={() => setComposeurOuvert(true)}>+</button>
-      {composeurOuvert && (
-        <Composeur fermer={() => setComposeurOuvert(false)} onAjout={sync.planifier} />
-      )}
+
+      {composeurOuvert && <Composeur fermer={() => setComposeurOuvert(false)} onAjout={sync.planifier} />}
       {ouverte && (
         <Detail
           key={ouverte.carte.id}
@@ -635,6 +785,6 @@ export default function App() {
           </div>
         </div>
       )}
-    </>
+    </div>
   )
 }
