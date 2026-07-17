@@ -230,6 +230,7 @@ function serialiserMd(carte, nomImage) {
   const meta = {
     v: 1, type: carte.type, titre: carte.titre || '', url: carte.url || '',
     apercu: carte.apercu || '', tags: carte.tags || [], note: carte.note || '',
+    espaces: carte.espaces || [],   // appartenance aux espaces (pin manuel)
     creeLe: carte.creeLe, modifieLe: carte.modifieLe,
     image: nomImage || ''
   }
@@ -390,6 +391,7 @@ async function recevoirCarte(id, dist) {
     texte,
     note: meta.note || '',
     tags: meta.tags || [],
+    espaces: meta.espaces || [],
     image,
     supprime: 0,
     creeLe: meta.creeLe,

@@ -31,6 +31,7 @@ export async function ajouterCarte(carte) {
   const complete = {
     id: nouvelId(),
     tags: [],
+    espaces: [],   // identifiants des espaces où la carte est épinglée
     supprime: 0,
     creeLe: maintenant,
     modifieLe: maintenant,
@@ -38,6 +39,34 @@ export async function ajouterCarte(carte) {
   }
   await db.cartes.add(complete)
   return complete
+}
+
+// --- Espaces (« Spaces ») -------------------------------------
+// Un espace est simplement une carte de type 'espace'. Il profite donc
+// du même moteur de synchronisation que les autres cartes (aucun code de
+// sync en plus). Son « titre » est le nom de l'espace. Les cartes de
+// contenu mémorisent les espaces où elles sont épinglées dans `espaces`.
+
+export async function creerEspace(nom) {
+  return ajouterCarte({ type: 'espace', titre: nom.trim() })
+}
+
+export async function renommerEspace(id, nom) {
+  await majCarte(id, { titre: nom.trim() })
+}
+
+export async function supprimerEspace(id) {
+  await supprimerCarte(id) // suppression douce → se propage aux autres appareils
+}
+
+// Épingle ou retire une carte d'un espace.
+export async function basculerEpingle(carte, espaceId, epingler) {
+  const actuels = carte.espaces || []
+  const maj = epingler
+    ? (actuels.includes(espaceId) ? actuels : [...actuels, espaceId])
+    : actuels.filter(e => e !== espaceId)
+  await majCarte(carte.id, { espaces: maj })
+  return maj
 }
 
 // Suppression « douce » : on garde la carte mais on la marque supprimée

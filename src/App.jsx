@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, ajouterCarte, supprimerCarte, majCarte, estUneUrl } from './db.js'
+import { db, ajouterCarte, supprimerCarte, majCarte, estUneUrl, creerEspace, supprimerEspace, basculerEpingle } from './db.js'
 import { sync_configuree } from './config.js'
 import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion } from './drive.js'
 
@@ -99,9 +99,10 @@ function Carte({ carte, onOuvrir, onModif }) {
 
 // Vue DÉTAIL d'une carte : contenu (image / article), tags éditables,
 // et une note personnelle. Façon panneau de détail de mymind.
-function Detail({ carte, src, fermer, onModif }) {
+function Detail({ carte, src, espaces = [], fermer, onModif }) {
   const [tags, setTags] = useState(carte.tags || [])
   const [nouveauTag, setNouveauTag] = useState('')
+  const [mesEspaces, setMesEspaces] = useState(carte.espaces || [])
   // Pour une carte-note, la « note » édite son texte ; sinon un champ à part.
   const champNote = carte.type === 'note' ? 'texte' : 'note'
   const [note, setNote] = useState(carte[champNote] || '')
@@ -127,6 +128,11 @@ function Detail({ carte, src, fermer, onModif }) {
   }
   function sauverNote() {
     if (note !== (carte[champNote] || '')) majCarte(carte.id, { [champNote]: note }).then(onModif)
+  }
+  function basculerEspace(espaceId) {
+    const epingler = !mesEspaces.includes(espaceId)
+    basculerEpingle({ ...carte, espaces: mesEspaces }, espaceId, epingler)
+      .then(maj => { setMesEspaces(maj); onModif() })
   }
 
   const image = src || (carte.type === 'lien' ? carte.apercu : null)
@@ -185,6 +191,24 @@ function Detail({ carte, src, fermer, onModif }) {
             onBlur={sauverNote}
           />
         </div>
+
+        {/* --- Espaces (épinglage manuel) --- */}
+        {espaces.length > 0 && (
+          <div className="detail-section">
+            <div className="detail-label">Espaces</div>
+            <div className="espaces-editeur">
+              {espaces.map(e => (
+                <button
+                  key={e.id}
+                  className={'espace-toggle' + (mesEspaces.includes(e.id) ? ' actif' : '')}
+                  onClick={() => basculerEspace(e.id)}
+                >
+                  {mesEspaces.includes(e.id) ? '✓ ' : '+ '}{e.titre}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -417,18 +441,26 @@ export default function App() {
   }, [])
 
   const [tagActif, setTagActif] = useState(null)
+  const [espaceActif, setEspaceActif] = useState(null) // id d'un espace, ou null (Tout)
 
   // useLiveQuery : la grille se met à jour toute seule dès que la base
-  // change. On masque les supprimées, on calcule la liste des tags, et
-  // on filtre par recherche + tag actif.
+  // change. On sépare les espaces (cartes de type 'espace') des cartes de
+  // contenu, on calcule la liste des tags, et on filtre la grille par
+  // espace + tag + recherche.
   const donnees = useLiveQuery(async () => {
     const toutes = await db.cartes.orderBy('creeLe').reverse().toArray()
     const visibles = toutes.filter(c => !c.supprime)
+    const espaces = visibles
+      .filter(c => c.type === 'espace')
+      .sort((a, b) => (a.titre || '').localeCompare(b.titre || ''))
+    const contenu = visibles.filter(c => c.type !== 'espace')
+
     const compte = {}
-    visibles.forEach(c => (c.tags || []).forEach(t => { compte[t] = (compte[t] || 0) + 1 }))
+    contenu.forEach(c => (c.tags || []).forEach(t => { compte[t] = (compte[t] || 0) + 1 }))
     const tags = Object.entries(compte).sort((a, b) => b[1] - a[1]).map(([t]) => t)
 
-    let liste = visibles
+    let liste = contenu
+    if (espaceActif) liste = liste.filter(c => (c.espaces || []).includes(espaceActif))
     if (tagActif) liste = liste.filter(c => (c.tags || []).includes(tagActif))
     const q = recherche.trim().toLowerCase()
     if (q) liste = liste.filter(c =>
@@ -438,10 +470,36 @@ export default function App() {
       (c.note || '').toLowerCase().includes(q) ||
       (c.tags || []).some(t => t.includes(q))
     )
-    return { liste, tags }
-  }, [recherche, tagActif])
+    return { liste, tags, espaces }
+  }, [recherche, tagActif, espaceActif])
   const cartes = donnees?.liste
   const tousTags = donnees?.tags || []
+  const espaces = donnees?.espaces || []
+
+  // Si l'espace actif est supprimé ailleurs, on revient sur « Tout ».
+  useEffect(() => {
+    if (espaceActif && !espaces.some(e => e.id === espaceActif)) setEspaceActif(null)
+  }, [espaces, espaceActif])
+
+  const [creationEspace, setCreationEspace] = useState(false)
+  const [nomEspace, setNomEspace] = useState('')
+
+  async function validerNouvelEspace() {
+    const nom = nomEspace.trim()
+    setNomEspace('')
+    setCreationEspace(false)
+    if (!nom) return
+    const e = await creerEspace(nom)
+    setEspaceActif(e.id)
+    sync.planifier()
+  }
+
+  function supprimerEspaceActif() {
+    const e = espaces.find(x => x.id === espaceActif)
+    if (!e) return
+    if (!window.confirm(`Supprimer l'espace « ${e.titre} » ? (les cartes ne sont pas supprimées)`)) return
+    supprimerEspace(e.id).then(() => { setEspaceActif(null); sync.planifier() })
+  }
 
   // Mode extension : petite fenêtre de capture dédiée (pas la grille).
   if (modeExt) return <CaptureExt />
@@ -460,6 +518,43 @@ export default function App() {
         <StatutSync etat={sync.etat} brancher={sync.brancher} lancer={sync.lancer} />
       </header>
 
+      <nav className="barre-espaces">
+        <button
+          className={'espace-onglet' + (espaceActif === null ? ' actif' : '')}
+          onClick={() => setEspaceActif(null)}
+        >Tout</button>
+        {espaces.map(e => (
+          <button
+            key={e.id}
+            className={'espace-onglet' + (espaceActif === e.id ? ' actif' : '')}
+            onClick={() => setEspaceActif(e.id)}
+          >{e.titre}</button>
+        ))}
+        {creationEspace ? (
+          <input
+            className="espace-nouveau-champ"
+            autoFocus
+            placeholder="Nom de l'espace…"
+            value={nomEspace}
+            onChange={e => setNomEspace(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') validerNouvelEspace()
+              if (e.key === 'Escape') { setNomEspace(''); setCreationEspace(false) }
+            }}
+            onBlur={validerNouvelEspace}
+          />
+        ) : (
+          <button className="espace-onglet espace-ajouter" onClick={() => setCreationEspace(true)}>
+            ＋ Espace
+          </button>
+        )}
+        {espaceActif && (
+          <button className="espace-supprimer" title="Supprimer cet espace" onClick={supprimerEspaceActif}>
+            Supprimer l'espace
+          </button>
+        )}
+      </nav>
+
       {tousTags.length > 0 && (
         <div className="barre-tags">
           {tousTags.map(t => (
@@ -472,7 +567,7 @@ export default function App() {
         </div>
       )}
 
-      {cartes && cartes.length === 0 && !recherche && !tagActif && (
+      {cartes && cartes.length === 0 && !recherche && !tagActif && !espaceActif && (
         <div className="vide">
           <div className="orbe" />
           <h2>Ton mind est vide. Pour l'instant.</h2>
@@ -485,6 +580,17 @@ export default function App() {
             <a className="lien-config" href="capturer.html">
               Configurer la capture (Mac & iPhone) →
             </a>
+          </p>
+        </div>
+      )}
+
+      {cartes && cartes.length === 0 && espaceActif && !recherche && !tagActif && (
+        <div className="vide">
+          <div className="orbe" />
+          <h2>Cet espace est vide.</h2>
+          <p>
+            Ouvre une carte et épingle-la à cet espace depuis sa vue détail
+            (section « Espaces »).
           </p>
         </div>
       )}
@@ -509,6 +615,7 @@ export default function App() {
           key={ouverte.carte.id}
           carte={ouverte.carte}
           src={ouverte.src}
+          espaces={espaces}
           fermer={() => setOuverte(null)}
           onModif={sync.planifier}
         />

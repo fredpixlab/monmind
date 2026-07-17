@@ -402,6 +402,52 @@ body {
 
 /* ---------- Barre de tags (filtre de la grille) ---------- */
 
+/* ---------- Barre des espaces (Spaces) ---------- */
+
+.barre-espaces {
+  display: flex; gap: 10px; align-items: center; overflow-x: auto;
+  scrollbar-width: none; padding: 14px 24px 6px;
+  max-width: 1400px; margin: 0 auto;
+}
+.barre-espaces::-webkit-scrollbar { display: none; }
+.espace-onglet {
+  flex: none; border: none; background: transparent; cursor: pointer;
+  color: var(--encre-2); font-size: 15px; font-weight: 600;
+  padding: 4px 2px; white-space: nowrap; position: relative;
+  transition: color .15s;
+}
+.espace-onglet:hover { color: var(--encre); }
+.espace-onglet.actif { color: var(--encre); }
+.espace-onglet.actif::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: -5px; height: 2px;
+  border-radius: 2px; background: var(--degrade);
+}
+.espace-ajouter { color: var(--encre-3); font-weight: 500; }
+.espace-nouveau-champ {
+  flex: none; border: 1px solid var(--trait); background: var(--carte);
+  border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 14px;
+  color: var(--encre); outline: none; width: 160px;
+}
+.espace-nouveau-champ:focus { border-color: hsl(255, 50%, 75%); }
+.espace-supprimer {
+  flex: none; margin-left: auto; border: none; background: transparent;
+  color: var(--encre-3); font-size: 13px; cursor: pointer; white-space: nowrap;
+}
+.espace-supprimer:hover { color: hsl(6, 55%, 55%); }
+
+/* Épinglage aux espaces depuis la vue détail */
+.espaces-editeur { display: flex; flex-wrap: wrap; gap: 8px; }
+.espace-toggle {
+  border: 1px solid var(--trait); background: var(--carte); cursor: pointer;
+  color: var(--encre-2); border-radius: 999px; padding: 6px 14px;
+  font-size: 13px; font-weight: 500; transition: all .15s;
+}
+.espace-toggle:hover { color: var(--encre); box-shadow: var(--ombre-sm); }
+.espace-toggle.actif {
+  background: hsl(175, 45%, 92%); color: hsl(175, 40%, 30%);
+  border-color: hsl(175, 45%, 80%);
+}
+
 .barre-tags {
   display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none;
   padding: 4px 24px 12px; max-width: 1400px; margin: 0 auto;
