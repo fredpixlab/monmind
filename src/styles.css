@@ -1,0 +1,239 @@
+/* ------------------------------------------------------------------
+   MonMind — feuille de style
+   Personnalité : calme, chaleureux, généreux en espace (esprit mymind).
+   Système : greys chauds (teinte 30°), échelle d'espacement 4/8/12/16/24/32/48,
+   rayons généreux, ombres à deux niveaux.
+------------------------------------------------------------------- */
+
+:root {
+  /* Greys chauds */
+  --fond: hsl(40, 23%, 97%);
+  --carte: hsl(40, 30%, 99.5%);
+  --encre: hsl(30, 12%, 16%);
+  --encre-2: hsl(30, 7%, 44%);
+  --encre-3: hsl(30, 6%, 62%);
+  --trait: hsl(35, 15%, 90%);
+
+  /* Le dégradé signature de MonMind (menthe → lavande → pêche) */
+  --degrade: linear-gradient(135deg,
+    hsl(175, 55%, 72%), hsl(255, 62%, 76%), hsl(22, 88%, 78%));
+
+  --ombre-sm: 0 1px 3px hsla(30, 20%, 10%, .08), 0 1px 2px hsla(30, 20%, 10%, .10);
+  --ombre-lg: 0 10px 20px hsla(30, 20%, 10%, .08), 0 3px 6px hsla(30, 20%, 10%, .05);
+  --ombre-xl: 0 15px 25px hsla(30, 20%, 10%, .10), 0 5px 10px hsla(30, 20%, 10%, .04);
+
+  --rayon: 16px;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { margin: 0; min-height: 100%; }
+
+body {
+  background: var(--fond);
+  color: var(--encre);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  /* Respecte l'encoche iPhone */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* ---------- Barre supérieure ---------- */
+
+.barre {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; gap: 16px;
+  padding: 16px 24px;
+  background: hsla(40, 23%, 97%, .85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.logo {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 18px; font-weight: 700; letter-spacing: -0.02em;
+  user-select: none; white-space: nowrap;
+}
+
+.logo .pastille {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--degrade);
+  box-shadow: var(--ombre-sm);
+}
+
+.recherche {
+  flex: 1; max-width: 480px;
+  border: none; outline: none;
+  background: hsl(35, 18%, 93%);
+  border-radius: 999px;
+  padding: 10px 18px;
+  font-size: 15px; color: var(--encre);
+  transition: background .2s, box-shadow .2s;
+}
+.recherche::placeholder { color: var(--encre-3); }
+.recherche:focus { background: var(--carte); box-shadow: var(--ombre-sm); }
+
+.statut-sync {
+  font-size: 12px; color: var(--encre-3);
+  white-space: nowrap;
+}
+@media (max-width: 600px) { .statut-sync { display: none; } }
+
+/* ---------- Grille de cartes (masonry) ---------- */
+
+.grille {
+  columns: 5 220px;          /* colonnes fluides façon mymind */
+  column-gap: 16px;
+  padding: 8px 24px 120px;
+  max-width: 1400px; margin: 0 auto;
+}
+
+.carte {
+  break-inside: avoid;
+  margin-bottom: 16px;
+  background: var(--carte);
+  border-radius: var(--rayon);
+  box-shadow: var(--ombre-sm);
+  overflow: hidden;
+  position: relative;
+  transition: box-shadow .25s ease, transform .25s ease;
+  animation: apparition .3s ease both;
+}
+.carte:hover { box-shadow: var(--ombre-lg); transform: translateY(-2px); }
+
+@keyframes apparition {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.carte img { display: block; width: 100%; height: auto; }
+
+.carte .contenu { padding: 16px; }
+
+.carte .texte {
+  margin: 0; font-size: 15px; line-height: 1.5;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
+.carte .lien-titre {
+  margin: 0 0 4px; font-size: 15px; font-weight: 600; line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.carte .lien-domaine {
+  margin: 0; font-size: 12px; color: var(--encre-3);
+}
+.carte a { color: inherit; text-decoration: none; }
+
+.carte .accent-lien {
+  height: 4px; background: var(--degrade);
+}
+
+.carte .date {
+  margin: 8px 0 0; font-size: 11px; color: var(--encre-3);
+}
+
+.carte .supprimer {
+  position: absolute; top: 8px; right: 8px;
+  width: 28px; height: 28px; border: none; border-radius: 50%;
+  background: hsla(30, 12%, 16%, .55); color: white;
+  font-size: 14px; line-height: 1; cursor: pointer;
+  opacity: 0; transition: opacity .2s;
+  backdrop-filter: blur(4px);
+}
+.carte:hover .supprimer { opacity: 1; }
+
+/* ---------- État vide ---------- */
+
+.vide {
+  max-width: 420px; margin: 10vh auto 0; padding: 0 24px;
+  text-align: center;
+}
+.vide .orbe {
+  width: 96px; height: 96px; margin: 0 auto 24px;
+  border-radius: 50%;
+  background: var(--degrade);
+  box-shadow: var(--ombre-xl);
+  animation: respiration 5s ease-in-out infinite;
+}
+@keyframes respiration {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+}
+.vide h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 8px; }
+.vide p { font-size: 15px; line-height: 1.5; color: var(--encre-2); margin: 0; }
+
+/* ---------- Bouton + flottant ---------- */
+
+.ajouter {
+  position: fixed; right: 24px; bottom: calc(24px + env(safe-area-inset-bottom));
+  z-index: 20;
+  width: 60px; height: 60px; border: none; border-radius: 50%;
+  background: var(--encre); color: var(--fond);
+  font-size: 26px; line-height: 1; cursor: pointer;
+  box-shadow: var(--ombre-xl);
+  transition: transform .2s ease, box-shadow .2s ease;
+}
+.ajouter:hover { transform: scale(1.06); }
+.ajouter:active { transform: scale(.96); box-shadow: var(--ombre-sm); }
+
+/* ---------- Composeur (overlay) ---------- */
+
+.voile {
+  position: fixed; inset: 0; z-index: 30;
+  background: hsla(30, 15%, 10%, .35);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 12vh 16px 0;
+  animation: fondu .2s ease both;
+}
+@keyframes fondu { from { opacity: 0; } to { opacity: 1; } }
+
+.composeur {
+  width: 100%; max-width: 520px;
+  background: var(--carte);
+  border-radius: 20px;
+  box-shadow: var(--ombre-xl);
+  padding: 24px;
+  animation: apparition .25s ease both;
+}
+
+.composeur textarea {
+  width: 100%; min-height: 120px;
+  border: none; outline: none; resize: vertical;
+  font: inherit; font-size: 16px; line-height: 1.5;
+  color: var(--encre); background: transparent;
+}
+.composeur textarea::placeholder { color: var(--encre-3); }
+
+.composeur .actions {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 16px; padding-top: 16px;
+  border-top: 1px solid var(--trait);
+}
+
+.bouton-second {
+  border: 1px solid var(--trait); background: transparent;
+  color: var(--encre-2);
+  border-radius: 999px; padding: 9px 16px;
+  font-size: 14px; font-weight: 500; cursor: pointer;
+  transition: background .2s;
+}
+.bouton-second:hover { background: hsl(35, 18%, 94%); }
+
+.bouton-principal {
+  margin-left: auto;
+  border: none; background: var(--encre); color: var(--fond);
+  border-radius: 999px; padding: 10px 22px;
+  font-size: 14px; font-weight: 600; cursor: pointer;
+  box-shadow: var(--ombre-sm);
+  transition: transform .15s, box-shadow .15s;
+}
+.bouton-principal:hover { transform: translateY(-1px); box-shadow: var(--ombre-lg); }
+.bouton-principal:disabled { opacity: .4; cursor: default; transform: none; box-shadow: none; }
+
+.apercu-image {
+  max-height: 180px; border-radius: 12px; margin-top: 12px;
+  box-shadow: var(--ombre-sm);
+}
