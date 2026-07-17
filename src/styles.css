@@ -161,8 +161,8 @@ body {
 /* ---------- Mosaïque de cartes ---------- */
 
 .grille {
-  columns: 5 230px;
-  column-gap: 22px;
+  columns: 4 285px;          /* cartes plus grandes par défaut (max 4 colonnes) */
+  column-gap: 24px;
   padding: 4px 8px;
 }
 .brique { break-inside: avoid; margin-bottom: 26px; }
