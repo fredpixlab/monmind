@@ -53,40 +53,54 @@ export async function initAuth() {
   })
 }
 
-// Demande un jeton d'accès. interactif=true montre l'écran Google
-// (consentement) ; sinon on tente en silencieux (prompt:'').
-// Garde-fous : délai maximum + gestion de error_callback pour ne JAMAIS
-// rester bloqué en attente d'un jeton qui ne vient pas.
-function demanderJeton(interactif) {
+// Demande un jeton d'accès Google.
+//   prompt = 'none'    → silencieux (aucune fenêtre) : échoue si Google a
+//                        besoin d'une interaction → on affiche « Connecter ».
+//   prompt = ''        → montre le sélecteur de compte / le consentement
+//                        seulement si nécessaire (clic sur le bouton).
+// Garde-fous : délai maximum + error_callback pour ne JAMAIS rester bloqué.
+// À chaque succès, le jeton est mémorisé sur le disque (IndexedDB) pour
+// survivre aux rechargements de page.
+function demanderJeton(prompt) {
   return new Promise((resolve, reject) => {
     if (!tokenClient) return reject(new Error('Auth non initialisée'))
     let fini = false
     const finir = (fn, arg) => { if (!fini) { fini = true; clearTimeout(minuteur); fn(arg) } }
     const minuteur = setTimeout(
       () => finir(reject, new BesoinReconnexion('délai dépassé')),
-      interactif ? 120000 : 15000
+      prompt === 'none' ? 12000 : 120000
     )
     tokenClient.callback = (rep) => {
       if (rep && rep.error) return finir(reject, new BesoinReconnexion(rep.error))
       jeton = { access_token: rep.access_token, expire: Date.now() + (rep.expires_in - 60) * 1000 }
+      setReglage('jeton', jeton).catch(() => {})   // persiste pour les rechargements
       finir(resolve, jeton)
     }
     tokenClient.error_callback = (err) => finir(reject, new BesoinReconnexion(err && err.type))
-    tokenClient.requestAccessToken({ prompt: interactif ? 'consent' : '' })
+    tokenClient.requestAccessToken({ prompt })
   })
 }
 
+// Recharge le jeton persisté (au démarrage), s'il est encore valide.
+async function chargerJetonPersiste() {
+  if (jeton) return
+  const j = await getReglage('jeton')
+  if (j && j.access_token && Date.now() < j.expire) jeton = j
+}
+
 async function jetonValide() {
+  if (!jeton) await chargerJetonPersiste()
   if (jeton && Date.now() < jeton.expire) return jeton.access_token
-  console.log('[sync] demande de jeton silencieuse…')
-  await demanderJeton(false) // silencieux
+  // Jeton absent ou expiré → tentative silencieuse (sans fenêtre).
+  await demanderJeton('none')
   return jeton.access_token
 }
 
-// Connexion volontaire (clic sur le bouton). Montre l'écran Google.
+// Connexion volontaire (clic sur le bouton). Montre le sélecteur Google
+// (et le consentement la première fois seulement).
 export async function connecter() {
   if (!tokenClient) await initAuth()
-  await demanderJeton(true)
+  await demanderJeton('')
   await setReglage('driveConnecte', true)
   return true
 }
@@ -98,6 +112,7 @@ export async function estDejaConnecte() {
 export async function deconnecter() {
   jeton = null
   await setReglage('driveConnecte', false)
+  await setReglage('jeton', null)
 }
 
 // ---- Appels Drive bas niveau ------------------------------------
