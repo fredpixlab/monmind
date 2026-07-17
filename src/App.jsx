@@ -1,18 +1,20 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, ajouterCarte, supprimerCarte, estUneUrl } from './db.js'
+import { sync_configuree } from './config.js'
+import { initAuth, connecter, estDejaConnecte, synchroniser } from './drive.js'
 
 // ---------------------------------------------------------------
-// MonMind — Phase 1/2 : squelette installable + cartes locales.
-// Les cartes vivent dans IndexedDB (voir db.js). La sync Google
-// Drive arrivera en Phase 3, les tags IA en Phase 5.
+// MonMind — Phase 3 : squelette + cartes locales + sync Google Drive.
+// Les cartes vivent dans IndexedDB (voir db.js) et se synchronisent
+// avec ton dossier Google Drive (voir drive.js). Tags IA en Phase 5.
 // ---------------------------------------------------------------
 
 function domaineDe(url) {
   try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url }
 }
 
-function Carte({ carte, onOuvrir }) {
+function Carte({ carte, onOuvrir, onModif }) {
   // Pour les images stockées en Blob, on fabrique une URL d'affichage
   // (et on la libère quand la carte disparaît de l'écran).
   const [src, setSrc] = useState(null)
@@ -58,7 +60,7 @@ function Carte({ carte, onOuvrir }) {
       <button
         className="supprimer"
         title="Supprimer"
-        onClick={e => { e.stopPropagation(); supprimerCarte(carte.id) }}
+        onClick={e => { e.stopPropagation(); supprimerCarte(carte.id).then(onModif) }}
       >×</button>
     </article>
   )
@@ -83,7 +85,7 @@ function Visionneuse({ carte, src, fermer }) {
   )
 }
 
-function Composeur({ fermer }) {
+function Composeur({ fermer, onAjout }) {
   const [texte, setTexte] = useState('')
   const [image, setImage] = useState(null)
   const [apercu, setApercu] = useState(null)
@@ -114,6 +116,7 @@ function Composeur({ fermer }) {
     } else {
       await ajouterCarte({ type: 'note', texte: propre })
     }
+    onAjout?.()
     fermer()
   }
 
@@ -151,18 +154,80 @@ function Composeur({ fermer }) {
   )
 }
 
+// Petit crochet qui gère toute la synchronisation Drive.
+function useSync() {
+  const [etat, setEtat] = useState('inconnu') // inconnu | deconnecte | pret | sync | ok | erreur
+  const timer = useRef(null)
+
+  const lancer = useCallback(async () => {
+    if (!sync_configuree()) return
+    setEtat('sync')
+    try {
+      await synchroniser()
+      setEtat('ok')
+    } catch (e) {
+      console.error('[sync]', e)
+      setEtat('erreur')
+    }
+  }, [])
+
+  // Planifie une sync (anti-rebond) après une modification locale.
+  const planifier = useCallback(() => {
+    if (!sync_configuree()) return
+    clearTimeout(timer.current)
+    timer.current = setTimeout(lancer, 1500)
+  }, [lancer])
+
+  // Au démarrage : si déjà connecté, on initialise et on synchronise.
+  useEffect(() => {
+    if (!sync_configuree()) { setEtat('non_configure'); return }
+    (async () => {
+      await initAuth()
+      if (await estDejaConnecte()) { setEtat('pret'); lancer() }
+      else setEtat('deconnecte')
+    })().catch(e => { console.error(e); setEtat('erreur') })
+
+    // Sync périodique + à chaque retour sur l'onglet
+    const intervalle = setInterval(lancer, 60000)
+    const surFocus = () => lancer()
+    window.addEventListener('focus', surFocus)
+    return () => { clearInterval(intervalle); window.removeEventListener('focus', surFocus) }
+  }, [lancer])
+
+  const brancher = useCallback(async () => {
+    try { await connecter(); setEtat('pret'); lancer() }
+    catch (e) { console.error(e); setEtat('erreur') }
+  }, [lancer])
+
+  return { etat, brancher, planifier, lancer }
+}
+
+function StatutSync({ etat, brancher, lancer }) {
+  if (etat === 'non_configure') return <span className="statut-sync">Local — Drive bientôt</span>
+  if (etat === 'deconnecte' || etat === 'inconnu')
+    return <button className="bouton-drive" onClick={brancher}>Connecter Google Drive</button>
+  const libelle = { sync: 'Synchronisation…', ok: 'Synchronisé ✓', pret: 'Synchronisé ✓', erreur: 'Erreur de sync' }[etat] || ''
+  return (
+    <button className="statut-sync cliquable-sync" title="Synchroniser maintenant" onClick={lancer}>
+      {etat === 'sync' && <span className="point-sync" />}{libelle}
+    </button>
+  )
+}
+
 export default function App() {
   const [recherche, setRecherche] = useState('')
   const [composeurOuvert, setComposeurOuvert] = useState(false)
   const [ouverte, setOuverte] = useState(null) // { carte, src } pour la visionneuse
+  const sync = useSync()
 
   // useLiveQuery : la grille se met à jour toute seule dès que la
-  // base locale change (ajout, suppression…).
+  // base locale change. On masque les cartes supprimées (tombstones).
   const cartes = useLiveQuery(async () => {
     const toutes = await db.cartes.orderBy('creeLe').reverse().toArray()
+    const visibles = toutes.filter(c => !c.supprime)
     const q = recherche.trim().toLowerCase()
-    if (!q) return toutes
-    return toutes.filter(c =>
+    if (!q) return visibles
+    return visibles.filter(c =>
       (c.texte || '').toLowerCase().includes(q) ||
       (c.titre || '').toLowerCase().includes(q) ||
       (c.url || '').toLowerCase().includes(q)
@@ -180,7 +245,7 @@ export default function App() {
           value={recherche}
           onChange={e => setRecherche(e.target.value)}
         />
-        <span className="statut-sync">Local · sync Drive en Phase 3</span>
+        <StatutSync etat={sync.etat} brancher={sync.brancher} lancer={sync.lancer} />
       </header>
 
       {cartes && cartes.length === 0 && !recherche && (
@@ -189,20 +254,27 @@ export default function App() {
           <h2>Ton mind est vide. Pour l'instant.</h2>
           <p>
             Garde une pensée, un lien ou une image avec le bouton +.
-            Tout reste sur cet appareil — la synchronisation entre tes
-            appareils arrive en Phase 3.
+            Connecte Google Drive en haut à droite pour retrouver tes
+            cartes sur tous tes appareils.
           </p>
         </div>
       )}
 
       <main className="grille">
         {cartes?.map(c => (
-          <Carte key={c.id} carte={c} onOuvrir={(carte, src) => setOuverte({ carte, src })} />
+          <Carte
+            key={c.id}
+            carte={c}
+            onOuvrir={(carte, src) => setOuverte({ carte, src })}
+            onModif={sync.planifier}
+          />
         ))}
       </main>
 
       <button className="ajouter" title="Ajouter" onClick={() => setComposeurOuvert(true)}>+</button>
-      {composeurOuvert && <Composeur fermer={() => setComposeurOuvert(false)} />}
+      {composeurOuvert && (
+        <Composeur fermer={() => setComposeurOuvert(false)} onAjout={sync.planifier} />
+      )}
       {ouverte && (
         <Visionneuse carte={ouverte.carte} src={ouverte.src} fermer={() => setOuverte(null)} />
       )}

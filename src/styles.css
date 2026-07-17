@@ -78,7 +78,32 @@ body {
   font-size: 12px; color: var(--encre-3);
   white-space: nowrap;
 }
-@media (max-width: 600px) { .statut-sync { display: none; } }
+.cliquable-sync {
+  border: none; background: transparent; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: inherit;
+}
+.cliquable-sync:hover { color: var(--encre-2); }
+
+.point-sync {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--degrade);
+  animation: respiration 1.2s ease-in-out infinite;
+}
+
+.bouton-drive {
+  border: 1px solid var(--trait); background: var(--carte);
+  color: var(--encre); cursor: pointer;
+  border-radius: 999px; padding: 8px 16px;
+  font-size: 13px; font-weight: 600; white-space: nowrap;
+  box-shadow: var(--ombre-sm);
+  transition: transform .15s, box-shadow .15s;
+}
+.bouton-drive:hover { transform: translateY(-1px); box-shadow: var(--ombre-lg); }
+
+@media (max-width: 600px) {
+  .statut-sync:not(.cliquable-sync) { display: none; }
+}
 
 /* ---------- Grille de cartes (masonry) ---------- */
 
