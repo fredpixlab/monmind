@@ -169,9 +169,15 @@ async function garantirDossiers() {
 
 // Envoi multipart (métadonnées + contenu) : création ou mise à jour.
 async function televerser(fileId, metadata, blob, contentType) {
+  // À la MISE À JOUR (PATCH), Drive interdit le champ `parents` dans le
+  // corps (« The parents field is not directly writable in update requests »).
+  // On ne l'envoie donc que pour une création (POST).
+  const meta = fileId
+    ? Object.fromEntries(Object.entries(metadata).filter(([k]) => k !== 'parents'))
+    : metadata
   const limite = '-------monmind' + Math.round(performance.now())
   const parties = [
-    `--${limite}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`,
+    `--${limite}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n`,
     `--${limite}\r\nContent-Type: ${contentType}\r\n\r\n`
   ]
   const corps = new Blob([parties[0], parties[1], blob, `\r\n--${limite}--`])
