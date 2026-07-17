@@ -213,22 +213,47 @@ function parserMd(contenu) {
 
 // ---- La synchronisation complète --------------------------------
 
-export async function synchroniser() {
+function choisirDernier(liste, cle) {
+  if (!liste || !liste.length) return null
+  return liste.reduce((a, b) => (cle(b) >= cle(a) ? b : a))
+}
+
+// Un seul cycle de synchronisation à la fois : sans ce verrou, deux
+// cycles lancés presque simultanément (ex. clic « Connecter » + retour
+// de focus) peuvent créer des fichiers en double sur Drive.
+let enCours = null
+export function synchroniser() {
+  if (enCours) return enCours
+  enCours = _synchroniser().finally(() => { enCours = null })
+  return enCours
+}
+
+async function _synchroniser() {
   await jetonValide()
   await garantirDossiers()
 
   const distants = await listerCartesDrive()
 
-  // Regroupe les fichiers distants par carte.
-  const parCarte = new Map() // cardId -> { md, img, deleted }
+  // Regroupe les fichiers distants par carte. On accepte plusieurs .md
+  // ou images (doublons d'un ancien cycle) pour pouvoir les nettoyer.
+  const parCarte = new Map() // cardId -> { mds:[], imgs:[], deleted, md, img }
   for (const f of distants) {
     const id = f.appProperties?.cardId
     if (!id) continue
-    const e = parCarte.get(id) || {}
+    const e = parCarte.get(id) || { mds: [], imgs: [] }
     if (f.name.endsWith('.deleted')) e.deleted = f
-    else if (f.appProperties?.kind === 'image') e.img = f
-    else e.md = f
+    else if (f.appProperties?.kind === 'image') e.imgs.push(f)
+    else e.mds.push(f)
     parCarte.set(id, e)
+  }
+
+  // Pré-passe anti-doublons : on ne garde que le .md le plus récent et
+  // une seule image par carte, et on supprime les doublons résiduels.
+  for (const e of parCarte.values()) {
+    e.md = choisirDernier(e.mds, f => Number(f.appProperties?.modifieLe || 0))
+    e.img = e.imgs[0] || null
+    for (const x of e.mds) if (e.md && x.id !== e.md.id) await supprimerFichier(x.id).catch(() => {})
+    for (const x of e.imgs) if (e.img && x.id !== e.img.id) await supprimerFichier(x.id).catch(() => {})
   }
 
   const locales = await db.cartes.toArray()
