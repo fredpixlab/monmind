@@ -155,6 +155,17 @@ body {
   height: 4px; background: var(--degrade);
 }
 
+.carte .apercu-lien {
+  display: block; width: 100%; aspect-ratio: 16 / 9;
+  object-fit: cover; background: hsl(35, 15%, 92%);
+}
+
+.carte .lien-extrait {
+  margin: 8px 0 0; font-size: 13px; color: var(--encre-2);
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .carte .date {
   margin: 8px 0 0; font-size: 11px; color: var(--encre-3);
 }
@@ -188,6 +199,9 @@ body {
 }
 .vide h2 { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 8px; }
 .vide p { font-size: 15px; line-height: 1.5; color: var(--encre-2); margin: 0; }
+.lien-config { color: var(--encre); font-weight: 600; text-decoration: none;
+  border-bottom: 2px solid hsl(255, 62%, 80%); padding-bottom: 1px; }
+.lien-config:hover { border-color: hsl(255, 62%, 68%); }
 
 /* ---------- Bouton + flottant ---------- */
 
@@ -303,3 +317,34 @@ body {
   transition: background .2s;
 }
 .fermer-visionneuse:hover { background: hsla(0, 0%, 100%, .26); }
+
+/* ---------- Toast de confirmation de capture ---------- */
+
+.toast-capture {
+  position: fixed; z-index: 50;
+  left: 50%; bottom: calc(28px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex; align-items: center; gap: 14px;
+  max-width: min(440px, 92vw);
+  background: var(--encre); color: var(--fond);
+  padding: 14px 20px; border-radius: 16px;
+  box-shadow: var(--ombre-xl);
+  cursor: pointer;
+  animation: monte .3s ease both;
+}
+@keyframes monte {
+  from { opacity: 0; transform: translate(-50%, 12px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+.toast-capture .coche {
+  flex: none; width: 30px; height: 30px; border-radius: 50%;
+  background: var(--degrade); color: white;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 700;
+}
+.toast-capture strong { font-size: 14px; }
+.toast-capture p {
+  margin: 2px 0 0; font-size: 13px; color: hsl(40, 15%, 75%);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  max-width: 340px;
+}

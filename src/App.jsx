@@ -42,7 +42,11 @@ function Carte({ carte, onOuvrir, onModif }) {
 
   return (
     <article className="carte cliquable" onClick={surClic}>
-      {carte.type === 'lien' && <div className="accent-lien" />}
+      {carte.type === 'lien' && !carte.apercu && <div className="accent-lien" />}
+      {carte.type === 'lien' && carte.apercu && (
+        <img className="apercu-lien" src={carte.apercu} alt="" loading="lazy"
+             onError={e => { e.currentTarget.style.display = 'none' }} />
+      )}
       {src && <img src={src} alt={carte.texte || 'Image sauvegardée'} />}
       {(carte.type !== 'image' || carte.texte) && (
         <div className="contenu">
@@ -50,6 +54,7 @@ function Carte({ carte, onOuvrir, onModif }) {
             <>
               <p className="lien-titre">{carte.titre || carte.url}</p>
               <p className="lien-domaine">{domaineDe(carte.url)}</p>
+              {carte.texte && <p className="texte lien-extrait">{carte.texte}</p>}
             </>
           ) : (
             carte.texte && <p className="texte">{carte.texte}</p>
@@ -221,11 +226,57 @@ function StatutSync({ etat, brancher, lancer }) {
   )
 }
 
+// Capture externe : l'app est ouverte avec des paramètres d'URL
+// (?c=1&type=lien&url=…&titre=…&img=…&note=…) par le bookmarklet Mac ou
+// le Raccourci iOS. On crée la carte, on synchronise, et on confirme.
+// Lit les paramètres de capture depuis l'URL, une fois, au démarrage.
+// (?c=1&type=…&url=…&titre=…&img=…&note=…) — bookmarklet Mac / Raccourci iOS.
+function lireCapture() {
+  const p = new URLSearchParams(window.location.search)
+  if (!p.get('c')) return null
+  return {
+    type: p.get('type') === 'note' ? 'note' : 'lien',
+    url: p.get('url') || '',
+    titre: (p.get('titre') || '').trim(),
+    apercu: p.get('img') || '',
+    note: (p.get('note') || '').trim(),
+    popup: p.get('popup') === '1'
+  }
+}
+
 export default function App() {
   const [recherche, setRecherche] = useState('')
   const [composeurOuvert, setComposeurOuvert] = useState(false)
   const [ouverte, setOuverte] = useState(null) // { carte, src } pour la visionneuse
+  // Capture lue SYNCHRONIQUEMENT à l'init (garantit que la confirmation
+  // s'affiche dès le premier rendu, contrairement à un setState async).
+  const [capture, setCapture] = useState(lireCapture)
   const sync = useSync()
+
+  // Crée réellement la carte à partir des paramètres de capture (une fois).
+  const syncRef = useRef(sync.planifier)
+  syncRef.current = sync.planifier
+  const fermerCapture = useCallback(() => setCapture(null), [])
+  useEffect(() => {
+    if (!capture) return
+    ;(async () => {
+      if (capture.type === 'note') {
+        await ajouterCarte({ type: 'note', texte: capture.note })
+      } else {
+        await ajouterCarte({
+          type: 'lien', url: capture.url, titre: capture.titre,
+          apercu: capture.apercu, texte: capture.note
+        })
+      }
+      window.history.replaceState(null, '', import.meta.env.BASE_URL)
+      syncRef.current?.()
+      // Ouverte en petite fenêtre par le bookmarklet : on referme la
+      // fenêtre après avoir montré la confirmation (l'utilisateur reste
+      // sur sa page). Sinon (onglet iOS), la confirmation se ferme au clic.
+      if (capture.popup) setTimeout(() => window.close(), 2200)
+    })().catch(e => console.error('[capture]', e))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // useLiveQuery : la grille se met à jour toute seule dès que la
   // base locale change. On masque les cartes supprimées (tombstones).
@@ -264,6 +315,11 @@ export default function App() {
             Connecte Google Drive en haut à droite pour retrouver tes
             cartes sur tous tes appareils.
           </p>
+          <p style={{ marginTop: 18 }}>
+            <a className="lien-config" href="capturer.html">
+              Configurer la capture (Mac & iPhone) →
+            </a>
+          </p>
         </div>
       )}
 
@@ -284,6 +340,15 @@ export default function App() {
       )}
       {ouverte && (
         <Visionneuse carte={ouverte.carte} src={ouverte.src} fermer={() => setOuverte(null)} />
+      )}
+      {capture && (
+        <div className="toast-capture" onClick={fermerCapture} title="Fermer">
+          <span className="coche">✓</span>
+          <div>
+            <strong>Gardé dans MonMind</strong>
+            <p>{capture.titre || capture.url || capture.note || 'Nouvelle carte'}</p>
+          </div>
+        </div>
       )}
     </>
   )
