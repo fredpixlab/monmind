@@ -14,6 +14,32 @@ function domaineDe(url) {
   try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url }
 }
 
+// --- Capture depuis l'extension navigateur -----------------------
+// L'extension ouvre l'app avec ?via=ext puis, via son pont (bridge.js),
+// envoie le contenu lisible de la page par postMessage. On écoute ça
+// dès le chargement du module (avant même le montage de React).
+let _extCapture = null
+let _extListener = null
+if (typeof window !== 'undefined') {
+  window.addEventListener('message', (e) => {
+    const d = e.data
+    if (!d || d.source !== 'monmind-ext' || !d.capture) return
+    _extCapture = d.capture
+    if (_extListener) _extListener(d.capture)
+  })
+}
+
+// Crée une carte-lien à partir d'une capture (extension, bookmarklet…).
+function creerCarteLien(cap) {
+  return ajouterCarte({
+    type: 'lien',
+    url: cap.url || '',
+    titre: (cap.titre || '').trim(),
+    apercu: cap.image || '',
+    texte: (cap.texte || cap.selection || '').trim() // contenu lisible de la page
+  })
+}
+
 function Carte({ carte, onOuvrir, onModif }) {
   // Pour les images stockées en Blob, on fabrique une URL d'affichage
   // (et on la libère quand la carte disparaît de l'écran).
@@ -30,10 +56,11 @@ function Carte({ carte, onOuvrir, onModif }) {
     day: 'numeric', month: 'short'
   })
 
-  // Cliquer une carte : un lien s'ouvre dans un nouvel onglet ;
+  // Cliquer une carte : un lien AVEC contenu lisible s'ouvre en vue
+  // lecture ; un lien sans contenu s'ouvre directement à la source ;
   // une image ou une note s'ouvre en grand dans la visionneuse.
   function surClic() {
-    if (carte.type === 'lien') {
+    if (carte.type === 'lien' && !carte.texte) {
       window.open(carte.url, '_blank', 'noopener')
     } else {
       onOuvrir(carte, src)
@@ -71,7 +98,8 @@ function Carte({ carte, onOuvrir, onModif }) {
   )
 }
 
-// La visionneuse plein écran (lightbox) pour images et notes.
+// La visionneuse plein écran : image simple, note, ou vue LECTURE d'un
+// lien (titre, image, article complet extrait, et lien vers la source).
 function Visionneuse({ carte, src, fermer }) {
   useEffect(() => {
     const surTouche = e => { if (e.key === 'Escape') fermer() }
@@ -79,12 +107,34 @@ function Visionneuse({ carte, src, fermer }) {
     return () => window.removeEventListener('keydown', surTouche)
   }, [fermer])
 
+  const estLecture = carte.type === 'lien'
+  const image = src || (carte.apercu || null)
+
   return (
     <div className="voile-visionneuse" onClick={fermer}>
       <button className="fermer-visionneuse" title="Fermer" onClick={fermer}>×</button>
-      <div className="cadre-visionneuse" onClick={e => e.stopPropagation()}>
-        {src && <img src={src} alt={carte.texte || 'Image'} />}
-        {carte.texte && <p className="legende-visionneuse">{carte.texte}</p>}
+      <div
+        className={estLecture ? 'cadre-lecture' : 'cadre-visionneuse'}
+        onClick={e => e.stopPropagation()}
+      >
+        {estLecture ? (
+          <article className="lecture">
+            {carte.titre && <h1>{carte.titre}</h1>}
+            {carte.url && (
+              <a className="lecture-source" href={carte.url} target="_blank" rel="noreferrer">
+                {domaineDe(carte.url)} ↗
+              </a>
+            )}
+            {image && <img className="lecture-image" src={image} alt=""
+                           onError={e => { e.currentTarget.style.display = 'none' }} />}
+            {carte.texte && <div className="lecture-texte">{carte.texte}</div>}
+          </article>
+        ) : (
+          <>
+            {src && <img src={src} alt={carte.texte || 'Image'} />}
+            {carte.texte && <p className="legende-visionneuse">{carte.texte}</p>}
+          </>
+        )}
       </div>
     </div>
   )
@@ -234,6 +284,7 @@ function StatutSync({ etat, brancher, lancer }) {
 function lireCapture() {
   const p = new URLSearchParams(window.location.search)
   if (!p.get('c')) return null
+  if (p.get('via') === 'ext') return null // géré par le mode extension
   return {
     type: p.get('type') === 'note' ? 'note' : 'lien',
     url: p.get('url') || '',
@@ -244,7 +295,44 @@ function lireCapture() {
   }
 }
 
+// Vue dédiée affichée dans la petite fenêtre ouverte par l'extension :
+// reçoit le contenu de la page, crée la carte, confirme. La fenêtre est
+// refermée par l'extension au bout de quelques secondes.
+function CaptureExt() {
+  const [carte, setCarte] = useState(null)
+  const [erreur, setErreur] = useState(false)
+  useEffect(() => {
+    let fait = false
+    const traiter = async (cap) => {
+      if (fait) return
+      fait = true
+      try {
+        const c = await creerCarteLien(cap)
+        setCarte(c)
+        if (sync_configuree() && await estDejaConnecte()) synchroniser().catch(() => {})
+      } catch (e) { console.error('[capture-ext]', e); setErreur(true) }
+    }
+    if (_extCapture) traiter(_extCapture)
+    _extListener = traiter
+    return () => { _extListener = null }
+  }, [])
+  return (
+    <div className="capture-ext">
+      <div className="orbe" />
+      {!carte && !erreur && <p className="ce-etat">Enregistrement…</p>}
+      {carte && (
+        <>
+          <h2>Gardé dans MonMind ✓</h2>
+          <p className="ce-titre">{carte.titre || carte.url}</p>
+        </>
+      )}
+      {erreur && <p className="ce-etat">Impossible de garder cette page.</p>}
+    </div>
+  )
+}
+
 export default function App() {
+  const [modeExt] = useState(() => new URLSearchParams(window.location.search).get('via') === 'ext')
   const [recherche, setRecherche] = useState('')
   const [composeurOuvert, setComposeurOuvert] = useState(false)
   const [ouverte, setOuverte] = useState(null) // { carte, src } pour la visionneuse
@@ -291,6 +379,9 @@ export default function App() {
       (c.url || '').toLowerCase().includes(q)
     )
   }, [recherche])
+
+  // Mode extension : petite fenêtre de capture dédiée (pas la grille).
+  if (modeExt) return <CaptureExt />
 
   return (
     <>

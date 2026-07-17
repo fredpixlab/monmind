@@ -318,6 +318,56 @@ body {
 }
 .fermer-visionneuse:hover { background: hsla(0, 0%, 100%, .26); }
 
+/* ---------- Vue lecture (article complet d'un lien) ---------- */
+
+.cadre-lecture {
+  width: 100%; max-width: 720px; max-height: 90vh;
+  overflow-y: auto;
+  background: var(--carte);
+  border-radius: 18px;
+  box-shadow: var(--ombre-2xl, 0 20px 40px hsla(0,0%,0%,.4));
+  animation: apparition .25s ease both;
+}
+.lecture { padding: 40px 44px 56px; }
+.lecture h1 {
+  font-size: 30px; line-height: 1.2; letter-spacing: -0.02em;
+  margin: 0 0 10px; color: var(--encre);
+}
+.lecture-source {
+  display: inline-block; margin-bottom: 22px;
+  font-size: 13px; font-weight: 600; color: hsl(255, 45%, 55%);
+  text-decoration: none;
+}
+.lecture-source:hover { text-decoration: underline; }
+.lecture-image {
+  display: block; width: 100%; border-radius: 12px; margin: 0 0 26px;
+  box-shadow: var(--ombre-sm);
+}
+.lecture-texte {
+  font-size: 17px; line-height: 1.7; color: var(--encre);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+@media (max-width: 600px) { .lecture { padding: 28px 22px 44px; } .lecture h1 { font-size: 24px; } }
+
+/* ---------- Fenêtre de capture de l'extension ---------- */
+
+.capture-ext {
+  min-height: 100vh;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; padding: 24px; gap: 4px;
+}
+.capture-ext .orbe {
+  width: 84px; height: 84px; border-radius: 50%;
+  background: var(--degrade); box-shadow: var(--ombre-xl);
+  animation: respiration 4s ease-in-out infinite; margin-bottom: 20px;
+}
+.capture-ext h2 { font-size: 20px; letter-spacing: -0.01em; margin: 0; }
+.capture-ext .ce-etat { color: var(--encre-2); font-size: 15px; margin: 0; }
+.capture-ext .ce-titre {
+  color: var(--encre-2); font-size: 14px; margin: 4px 0 0;
+  max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
 /* ---------- Toast de confirmation de capture ---------- */
 
 .toast-capture {
