@@ -229,7 +229,7 @@ function extensionImage(blob) {
 function serialiserMd(carte, nomImage) {
   const meta = {
     v: 1, type: carte.type, titre: carte.titre || '', url: carte.url || '',
-    apercu: carte.apercu || '', tags: carte.tags || [],
+    apercu: carte.apercu || '', tags: carte.tags || [], note: carte.note || '',
     creeLe: carte.creeLe, modifieLe: carte.modifieLe,
     image: nomImage || ''
   }
@@ -388,6 +388,7 @@ async function recevoirCarte(id, dist) {
     url: meta.url || '',
     apercu: meta.apercu || '',
     texte,
+    note: meta.note || '',
     tags: meta.tags || [],
     image,
     supprime: 0,

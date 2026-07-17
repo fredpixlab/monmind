@@ -48,6 +48,12 @@ export async function supprimerCarte(id) {
   await db.cartes.update(id, { supprime: 1, modifieLe: Date.now() })
 }
 
+// Modifie une carte (tags, note, titre…) et met à jour sa date pour que
+// le changement se synchronise sur les autres appareils.
+export async function majCarte(id, changements) {
+  await db.cartes.update(id, { ...changements, modifieLe: Date.now() })
+}
+
 // Insère/met à jour une carte reçue depuis Drive (sans toucher aux dates).
 export async function upsertDepuisDrive(carte) {
   await db.cartes.put(carte)

@@ -170,6 +170,12 @@ body {
   margin: 8px 0 0; font-size: 11px; color: var(--encre-3);
 }
 
+.carte-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+.mini-tag {
+  font-size: 11px; color: var(--encre-2);
+  background: hsl(35, 18%, 93%); border-radius: 999px; padding: 2px 9px;
+}
+
 .carte .supprimer {
   position: absolute; top: 8px; right: 8px;
   width: 28px; height: 28px; border: none; border-radius: 50%;
@@ -348,6 +354,69 @@ body {
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
 @media (max-width: 600px) { .lecture { padding: 28px 22px 44px; } .lecture h1 { font-size: 24px; } }
+
+/* ---------- Vue détail éditable (tags + note) ---------- */
+
+.cadre-detail {
+  width: 100%; max-width: 680px; max-height: 90vh; overflow-y: auto;
+  background: var(--carte); border-radius: 18px;
+  box-shadow: var(--ombre-2xl, 0 20px 40px hsla(0,0%,0%,.4));
+  padding: 32px 36px 40px;
+  animation: apparition .25s ease both;
+}
+.detail-titre { font-size: 26px; line-height: 1.2; letter-spacing: -0.02em; margin: 0 0 8px; }
+.detail-image {
+  display: block; width: 100%; border-radius: 12px; margin: 8px 0 20px;
+  box-shadow: var(--ombre-sm);
+}
+.detail-section { margin-top: 22px; }
+.detail-label {
+  font-size: 12px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--encre-3); margin-bottom: 10px;
+}
+.tags-editeur { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tag-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: hsl(255, 40%, 95%); color: hsl(255, 30%, 38%);
+  border-radius: 999px; padding: 5px 6px 5px 12px; font-size: 13px; font-weight: 500;
+}
+.tag-chip button {
+  border: none; background: hsla(255, 30%, 40%, .15); color: hsl(255, 30%, 38%);
+  width: 18px; height: 18px; border-radius: 50%; cursor: pointer;
+  font-size: 12px; line-height: 1; display: flex; align-items: center; justify-content: center;
+}
+.tag-chip button:hover { background: hsla(255, 30%, 40%, .3); }
+.tag-input {
+  border: 1px dashed var(--trait); background: transparent; outline: none;
+  border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 13px;
+  color: var(--encre); width: 90px;
+}
+.tag-input:focus { border-style: solid; border-color: hsl(255, 50%, 75%); }
+.note-editeur {
+  width: 100%; min-height: 90px; resize: vertical;
+  border: 1px solid var(--trait); border-radius: 12px; padding: 12px 14px;
+  font: inherit; font-size: 15px; line-height: 1.55; color: var(--encre);
+  background: var(--fond); outline: none;
+}
+.note-editeur:focus { border-color: hsl(255, 50%, 75%); background: var(--carte); }
+
+/* ---------- Barre de tags (filtre de la grille) ---------- */
+
+.barre-tags {
+  display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none;
+  padding: 4px 24px 12px; max-width: 1400px; margin: 0 auto;
+}
+.barre-tags::-webkit-scrollbar { display: none; }
+.pastille-tag {
+  flex: none; border: 1px solid var(--trait); background: var(--carte);
+  color: var(--encre-2); border-radius: 999px; padding: 6px 14px;
+  font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap;
+  transition: all .15s;
+}
+.pastille-tag:hover { color: var(--encre); box-shadow: var(--ombre-sm); }
+.pastille-tag.actif {
+  background: var(--encre); color: var(--fond); border-color: var(--encre);
+}
 
 /* ---------- Fenêtre de capture de l'extension ---------- */
 

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, ajouterCarte, supprimerCarte, estUneUrl } from './db.js'
+import { db, ajouterCarte, supprimerCarte, majCarte, estUneUrl } from './db.js'
 import { sync_configuree } from './config.js'
 import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion } from './drive.js'
 
@@ -56,15 +56,9 @@ function Carte({ carte, onOuvrir, onModif }) {
     day: 'numeric', month: 'short'
   })
 
-  // Cliquer une carte : un lien AVEC contenu lisible s'ouvre en vue
-  // lecture ; un lien sans contenu s'ouvre directement à la source ;
-  // une image ou une note s'ouvre en grand dans la visionneuse.
+  // Cliquer une carte ouvre sa vue détail (contenu, tags, note).
   function surClic() {
-    if (carte.type === 'lien' && !carte.texte) {
-      window.open(carte.url, '_blank', 'noopener')
-    } else {
-      onOuvrir(carte, src)
-    }
+    onOuvrir(carte, src)
   }
 
   return (
@@ -86,6 +80,11 @@ function Carte({ carte, onOuvrir, onModif }) {
           ) : (
             carte.texte && <p className="texte">{carte.texte}</p>
           )}
+          {carte.tags && carte.tags.length > 0 && (
+            <div className="carte-tags">
+              {carte.tags.slice(0, 4).map(t => <span key={t} className="mini-tag">{t}</span>)}
+            </div>
+          )}
           <p className="date">{date}</p>
         </div>
       )}
@@ -98,43 +97,94 @@ function Carte({ carte, onOuvrir, onModif }) {
   )
 }
 
-// La visionneuse plein écran : image simple, note, ou vue LECTURE d'un
-// lien (titre, image, article complet extrait, et lien vers la source).
-function Visionneuse({ carte, src, fermer }) {
+// Vue DÉTAIL d'une carte : contenu (image / article), tags éditables,
+// et une note personnelle. Façon panneau de détail de mymind.
+function Detail({ carte, src, fermer, onModif }) {
+  const [tags, setTags] = useState(carte.tags || [])
+  const [nouveauTag, setNouveauTag] = useState('')
+  // Pour une carte-note, la « note » édite son texte ; sinon un champ à part.
+  const champNote = carte.type === 'note' ? 'texte' : 'note'
+  const [note, setNote] = useState(carte[champNote] || '')
+
   useEffect(() => {
     const surTouche = e => { if (e.key === 'Escape') fermer() }
     window.addEventListener('keydown', surTouche)
     return () => window.removeEventListener('keydown', surTouche)
   }, [fermer])
 
-  const estLecture = carte.type === 'lien'
-  const image = src || (carte.apercu || null)
+  function ajouterTag() {
+    const t = nouveauTag.trim().toLowerCase()
+    setNouveauTag('')
+    if (!t || tags.includes(t)) return
+    const maj = [...tags, t]
+    setTags(maj)
+    majCarte(carte.id, { tags: maj }).then(onModif)
+  }
+  function retirerTag(t) {
+    const maj = tags.filter(x => x !== t)
+    setTags(maj)
+    majCarte(carte.id, { tags: maj }).then(onModif)
+  }
+  function sauverNote() {
+    if (note !== (carte[champNote] || '')) majCarte(carte.id, { [champNote]: note }).then(onModif)
+  }
+
+  const image = src || (carte.type === 'lien' ? carte.apercu : null)
 
   return (
     <div className="voile-visionneuse" onClick={fermer}>
       <button className="fermer-visionneuse" title="Fermer" onClick={fermer}>×</button>
-      <div
-        className={estLecture ? 'cadre-lecture' : 'cadre-visionneuse'}
-        onClick={e => e.stopPropagation()}
-      >
-        {estLecture ? (
-          <article className="lecture">
-            {carte.titre && <h1>{carte.titre}</h1>}
+      <div className="cadre-detail" onClick={e => e.stopPropagation()}>
+        {/* --- Contenu --- */}
+        {carte.type === 'lien' && (
+          <>
+            {carte.titre && <h1 className="detail-titre">{carte.titre}</h1>}
             {carte.url && (
               <a className="lecture-source" href={carte.url} target="_blank" rel="noreferrer">
                 {domaineDe(carte.url)} ↗
               </a>
             )}
-            {image && <img className="lecture-image" src={image} alt=""
+            {image && <img className="detail-image" src={image} alt=""
                            onError={e => { e.currentTarget.style.display = 'none' }} />}
             {carte.texte && <div className="lecture-texte">{carte.texte}</div>}
-          </article>
-        ) : (
-          <>
-            {src && <img src={src} alt={carte.texte || 'Image'} />}
-            {carte.texte && <p className="legende-visionneuse">{carte.texte}</p>}
           </>
         )}
+        {carte.type === 'image' && src && (
+          <img className="detail-image" src={src} alt={carte.texte || 'Image'} />
+        )}
+
+        {/* --- Tags --- */}
+        <div className="detail-section">
+          <div className="detail-label">Tags</div>
+          <div className="tags-editeur">
+            {tags.map(t => (
+              <span key={t} className="tag-chip">
+                {t}
+                <button title="Retirer" onClick={() => retirerTag(t)}>×</button>
+              </span>
+            ))}
+            <input
+              className="tag-input"
+              placeholder="+ tag"
+              value={nouveauTag}
+              onChange={e => setNouveauTag(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); ajouterTag() } }}
+              onBlur={ajouterTag}
+            />
+          </div>
+        </div>
+
+        {/* --- Note --- */}
+        <div className="detail-section">
+          <div className="detail-label">{carte.type === 'note' ? 'Note' : 'Ta note'}</div>
+          <textarea
+            className="note-editeur"
+            placeholder="Écris une note…"
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            onBlur={sauverNote}
+          />
+        </div>
       </div>
     </div>
   )
@@ -366,19 +416,32 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // useLiveQuery : la grille se met à jour toute seule dès que la
-  // base locale change. On masque les cartes supprimées (tombstones).
-  const cartes = useLiveQuery(async () => {
+  const [tagActif, setTagActif] = useState(null)
+
+  // useLiveQuery : la grille se met à jour toute seule dès que la base
+  // change. On masque les supprimées, on calcule la liste des tags, et
+  // on filtre par recherche + tag actif.
+  const donnees = useLiveQuery(async () => {
     const toutes = await db.cartes.orderBy('creeLe').reverse().toArray()
     const visibles = toutes.filter(c => !c.supprime)
+    const compte = {}
+    visibles.forEach(c => (c.tags || []).forEach(t => { compte[t] = (compte[t] || 0) + 1 }))
+    const tags = Object.entries(compte).sort((a, b) => b[1] - a[1]).map(([t]) => t)
+
+    let liste = visibles
+    if (tagActif) liste = liste.filter(c => (c.tags || []).includes(tagActif))
     const q = recherche.trim().toLowerCase()
-    if (!q) return visibles
-    return visibles.filter(c =>
+    if (q) liste = liste.filter(c =>
       (c.texte || '').toLowerCase().includes(q) ||
       (c.titre || '').toLowerCase().includes(q) ||
-      (c.url || '').toLowerCase().includes(q)
+      (c.url || '').toLowerCase().includes(q) ||
+      (c.note || '').toLowerCase().includes(q) ||
+      (c.tags || []).some(t => t.includes(q))
     )
-  }, [recherche])
+    return { liste, tags }
+  }, [recherche, tagActif])
+  const cartes = donnees?.liste
+  const tousTags = donnees?.tags || []
 
   // Mode extension : petite fenêtre de capture dédiée (pas la grille).
   if (modeExt) return <CaptureExt />
@@ -397,7 +460,19 @@ export default function App() {
         <StatutSync etat={sync.etat} brancher={sync.brancher} lancer={sync.lancer} />
       </header>
 
-      {cartes && cartes.length === 0 && !recherche && (
+      {tousTags.length > 0 && (
+        <div className="barre-tags">
+          {tousTags.map(t => (
+            <button
+              key={t}
+              className={'pastille-tag' + (tagActif === t ? ' actif' : '')}
+              onClick={() => setTagActif(tagActif === t ? null : t)}
+            >{t}</button>
+          ))}
+        </div>
+      )}
+
+      {cartes && cartes.length === 0 && !recherche && !tagActif && (
         <div className="vide">
           <div className="orbe" />
           <h2>Ton mind est vide. Pour l'instant.</h2>
@@ -430,7 +505,13 @@ export default function App() {
         <Composeur fermer={() => setComposeurOuvert(false)} onAjout={sync.planifier} />
       )}
       {ouverte && (
-        <Visionneuse carte={ouverte.carte} src={ouverte.src} fermer={() => setOuverte(null)} />
+        <Detail
+          key={ouverte.carte.id}
+          carte={ouverte.carte}
+          src={ouverte.src}
+          fermer={() => setOuverte(null)}
+          onModif={sync.planifier}
+        />
       )}
       {capture && (
         <div className="toast-capture" onClick={fermerCapture} title="Fermer">
