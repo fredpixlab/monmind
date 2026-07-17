@@ -48,9 +48,11 @@ export function vignetteVideo(blob) {
     const v = document.createElement('video')
     v.muted = true; v.playsInline = true; v.preload = 'metadata'
     let fait = false
-    const finir = (fn, arg) => { if (!fait) { fait = true; URL.revokeObjectURL(url); fn(arg) } }
+    const finir = (fn, arg) => { if (!fait) { fait = true; clearTimeout(minuteur); URL.revokeObjectURL(url); fn(arg) } }
+    // Délai de sécurité : certains formats (ex. .mov) ne déclenchent NI
+    // « loadedmetadata » NI « error » dans Chrome → sans ça, ça fige.
+    const minuteur = setTimeout(() => finir(reject, new Error('vidéo : délai vignette dépassé')), 12000)
     v.onloadedmetadata = () => {
-      // Se placer un peu après le début pour éviter une frame noire.
       v.currentTime = Math.min(1, (v.duration || 2) / 2)
     }
     v.onseeked = async () => {

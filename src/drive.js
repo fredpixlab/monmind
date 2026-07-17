@@ -18,6 +18,18 @@ import { typeMime } from './vignette.js'
 const API = 'https://www.googleapis.com/drive/v3'
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3'
 
+// Délai maximum d'un upload, proportionnel à la taille (borné), pour ne
+// jamais rester figé sur un fichier bloqué (une erreur est alors levée et
+// l'import la retentera au prochain passage).
+function delaiUpload(taille = 0) {
+  return Math.min(1_200_000, Math.max(120_000, Math.round(taille / 50)))
+}
+function controleurDelai(ms) {
+  const c = new AbortController()
+  const t = setTimeout(() => c.abort(), ms)
+  return { signal: c.signal, fini: () => clearTimeout(t) }
+}
+
 let tokenClient = null
 let jeton = null          // { access_token, expire }  (en mémoire, jamais stocké sur disque)
 let racineId = null
@@ -184,11 +196,16 @@ async function televerser(fileId, metadata, blob, contentType) {
   const url = fileId
     ? `${UPLOAD}/files/${fileId}?uploadType=multipart&fields=id,modifiedTime`
     : `${UPLOAD}/files?uploadType=multipart&fields=id,modifiedTime`
-  const rep = await api(url, {
-    method: fileId ? 'PATCH' : 'POST',
-    headers: { 'Content-Type': `multipart/related; boundary=${limite}` },
-    body: corps
-  })
+  const d = controleurDelai(delaiUpload(blob?.size))
+  let rep
+  try {
+    rep = await api(url, {
+      method: fileId ? 'PATCH' : 'POST',
+      headers: { 'Content-Type': `multipart/related; boundary=${limite}` },
+      body: corps,
+      signal: d.signal
+    })
+  } finally { d.fini() }
   return rep.json()
 }
 
@@ -201,20 +218,29 @@ async function supprimerFichier(fileId) {
 // session resumable puis on envoie le contenu.
 async function televerserResumable(metadata, blob, contentType) {
   const token = await jetonValide()
-  const initRep = await fetch(`${UPLOAD}/files?uploadType=resumable&fields=id,modifiedTime`, {
-    method: 'POST',
-    headers: {
-      Authorization: 'Bearer ' + token,
-      'Content-Type': 'application/json; charset=UTF-8',
-      'X-Upload-Content-Type': contentType,
-      'X-Upload-Content-Length': String(blob.size)
-    },
-    body: JSON.stringify(metadata)
-  })
+  const dInit = controleurDelai(60_000)
+  let initRep
+  try {
+    initRep = await fetch(`${UPLOAD}/files?uploadType=resumable&fields=id,modifiedTime`, {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + token,
+        'Content-Type': 'application/json; charset=UTF-8',
+        'X-Upload-Content-Type': contentType,
+        'X-Upload-Content-Length': String(blob.size)
+      },
+      body: JSON.stringify(metadata),
+      signal: dInit.signal
+    })
+  } finally { dInit.fini() }
   if (!initRep.ok) throw new Error(`Drive resumable init ${initRep.status}: ${(await initRep.text()).slice(0, 200)}`)
   const session = initRep.headers.get('Location')
   if (!session) throw new Error('Drive resumable : session URI manquante')
-  const putRep = await fetch(session, { method: 'PUT', headers: { 'Content-Type': contentType }, body: blob })
+  const dPut = controleurDelai(delaiUpload(blob.size))
+  let putRep
+  try {
+    putRep = await fetch(session, { method: 'PUT', headers: { 'Content-Type': contentType }, body: blob, signal: dPut.signal })
+  } finally { dPut.fini() }
   if (!putRep.ok) throw new Error(`Drive resumable put ${putRep.status}: ${(await putRep.text()).slice(0, 200)}`)
   return putRep.json()
 }
