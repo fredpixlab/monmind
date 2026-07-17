@@ -99,7 +99,7 @@ function Carte({ carte, onOuvrir, onModif }) {
 
 // Vue DÉTAIL d'une carte : contenu (image / article), tags éditables,
 // et une note personnelle. Façon panneau de détail de mymind.
-function Detail({ carte, src, espaces = [], fermer, onModif }) {
+function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif }) {
   const [tags, setTags] = useState(carte.tags || [])
   const [nouveauTag, setNouveauTag] = useState('')
   const [mesEspaces, setMesEspaces] = useState(carte.espaces || [])
@@ -172,11 +172,16 @@ function Detail({ carte, src, espaces = [], fermer, onModif }) {
             <input
               className="tag-input"
               placeholder="+ tag"
+              list="tags-connus"
               value={nouveauTag}
               onChange={e => setNouveauTag(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); ajouterTag() } }}
               onBlur={ajouterTag}
             />
+            {/* Suggestions : tes tags déjà utilisés, pour rester cohérent */}
+            <datalist id="tags-connus">
+              {tousTags.filter(t => !tags.includes(t)).map(t => <option key={t} value={t} />)}
+            </datalist>
           </div>
         </div>
 
@@ -616,6 +621,7 @@ export default function App() {
           carte={ouverte.carte}
           src={ouverte.src}
           espaces={espaces}
+          tousTags={tousTags}
           fermer={() => setOuverte(null)}
           onModif={sync.planifier}
         />
