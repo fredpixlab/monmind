@@ -469,6 +469,67 @@ body {
   .detail-contenu { max-height: 60vh; }
 }
 
+.dp-nouvel-espace { padding: 0 24px 4px; }
+
+/* ---------- Serendipity (redécouverte, une carte à la fois) ---------- */
+
+.seren {
+  position: relative; min-height: 74vh;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.seren-nuees { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+.nuee {
+  position: absolute; width: 190px; height: 150px; border-radius: 14px; overflow: hidden;
+  filter: blur(3px); opacity: .5; box-shadow: var(--ombre-lg);
+}
+.nuee img, .nuee .pile-note { width: 100%; height: 100%; object-fit: cover; }
+.nuee.n0 { top: 4%; left: 3%; transform: rotate(-8deg); }
+.nuee.n1 { top: 8%; right: 5%; transform: rotate(6deg); opacity: .4; }
+.nuee.n2 { bottom: 10%; left: 8%; transform: rotate(5deg); opacity: .4; }
+.nuee.n3 { bottom: 6%; right: 9%; transform: rotate(-6deg); }
+.nuee.n4 { top: 40%; left: 1%; transform: rotate(3deg); opacity: .35; width: 150px; height: 120px; }
+.nuee.n5 { top: 44%; right: 2%; transform: rotate(-4deg); opacity: .35; width: 150px; height: 120px; }
+
+.seren-scene {
+  position: relative; z-index: 1;
+  display: flex; flex-direction: column; align-items: center; gap: 30px;
+  width: 100%; max-width: 560px;
+}
+.seren-carte { width: 100%; animation: apparition .35s ease both; }
+
+.focus-carte {
+  background: var(--carte); border-radius: 18px; box-shadow: var(--ombre-xl);
+  overflow: hidden; max-height: 56vh; overflow-y: auto;
+}
+.focus-image { display: block; width: 100%; height: auto; }
+.focus-apercu { display: block; width: 100%; aspect-ratio: 16/9; object-fit: cover; }
+.focus-corps { padding: 26px 30px 30px; }
+.focus-titre { font-family: var(--serif); font-size: 22px; line-height: 1.3; margin: 0 0 10px; }
+.focus-extrait { font-size: 15px; line-height: 1.6; color: var(--encre-2); margin: 0 0 12px;
+  display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+.focus-source { font-size: 12px; color: var(--encre-3); margin: 0; }
+.focus-note { font-family: var(--serif); font-size: 22px; line-height: 1.5; margin: 0; white-space: pre-wrap; }
+
+.seren-actions { display: flex; gap: 22px; }
+.seren-bouton {
+  min-width: 130px; border: 1px solid var(--trait); background: var(--carte);
+  color: var(--encre-2); border-radius: 999px; padding: 14px 26px;
+  font-size: 16px; font-weight: 600; cursor: pointer; box-shadow: var(--ombre-sm);
+  transition: transform .15s, box-shadow .15s, color .15s;
+}
+.seren-bouton:hover { transform: translateY(-2px); box-shadow: var(--ombre-lg); color: var(--encre); }
+.seren-bouton.garder { background: var(--encre); color: white; border-color: var(--encre); }
+.seren-compteur { font-size: 13px; color: var(--encre-3); margin: 0; }
+
+.seren-fin { text-align: center; max-width: 420px; }
+.seren-fin .orbe {
+  width: 90px; height: 90px; margin: 0 auto 22px; border-radius: 50%;
+  background: var(--degrade); box-shadow: var(--ombre-xl); animation: respiration 5s ease-in-out infinite;
+}
+.seren-fin h2 { font-family: var(--serif); font-style: italic; font-size: 26px; margin: 0 0 8px; }
+.seren-fin p { color: var(--encre-2); margin: 0 0 22px; }
+
 /* ---------- Fenêtre de capture de l'extension ---------- */
 
 .capture-ext {

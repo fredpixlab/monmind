@@ -152,8 +152,12 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif }) {
   const champNote = carte.type === 'note' ? 'texte' : 'note'
   const [note, setNote] = useState(carte[champNote] || '')
   const [teinte, setTeinte] = useState(null)
+  const [nouvelEspaceOuvert, setNouvelEspaceOuvert] = useState(false)
+  const [nomNouvelEspace, setNomNouvelEspace] = useState('')
 
   const image = src || (carte.type === 'lien' ? carte.apercu : null)
+  // Y a-t-il un média téléchargeable (image locale, aperçu, vidéo à venir) ?
+  const media = src || (carte.type === 'lien' && carte.apercu ? carte.apercu : null)
 
   useEffect(() => {
     const surTouche = e => { if (e.key === 'Escape') fermer() }
@@ -191,6 +195,26 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif }) {
   }
   function jeter() {
     supprimerCarte(carte.id).then(() => { onModif(); fermer() })
+  }
+  // Télécharge le média de la carte en local (image / vidéo à venir).
+  function telecharger() {
+    if (!media) return
+    const ext = carte.image ? (carte.image.type.split('/')[1] || 'png') : 'png'
+    const nom = (carte.titre || carte.texte || 'monmind').trim().slice(0, 40).replace(/[^\w\-]+/g, '-') || 'monmind'
+    const a = document.createElement('a')
+    a.href = media
+    a.download = `${nom}.${ext}`
+    document.body.appendChild(a); a.click(); a.remove()
+  }
+  // Crée un nouvel espace et y épingle directement cette carte.
+  async function creerEspaceEtEpingler() {
+    const nom = nomNouvelEspace.trim()
+    setNomNouvelEspace(''); setNouvelEspaceOuvert(false)
+    if (!nom) return
+    const e = await creerEspace(nom)
+    const maj = mesEspaces.includes(e.id) ? mesEspaces : [...mesEspaces, e.id]
+    await majCarte(carte.id, { espaces: maj })
+    setMesEspaces(maj); onModif()
   }
 
   const fond = teinte
@@ -283,7 +307,26 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif }) {
             )}
           </div>
 
+          {nouvelEspaceOuvert && (
+            <div className="dp-nouvel-espace">
+              <input
+                autoFocus className="espace-nouveau-champ" placeholder="Nom du nouvel espace…"
+                value={nomNouvelEspace} onChange={e => setNomNouvelEspace(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') creerEspaceEtEpingler()
+                  if (e.key === 'Escape') { setNomNouvelEspace(''); setNouvelEspaceOuvert(false) }
+                }}
+                onBlur={creerEspaceEtEpingler}
+              />
+            </div>
+          )}
+
           <div className="dp-actions">
+            {media && (
+              <button className="dp-icone" title="Télécharger en local" onClick={telecharger}>↓</button>
+            )}
+            <button className="dp-icone" title="Ranger dans un nouvel espace"
+                    onClick={() => setNouvelEspaceOuvert(v => !v)}>◯</button>
             <button className="dp-icone dp-jeter" title="Supprimer" onClick={jeter}>🗑</button>
           </div>
         </aside>
@@ -496,6 +539,68 @@ function PileEspace({ espace, membres, onOuvrir }) {
   )
 }
 
+// --- Serendipity : une carte mise en avant, Oublier / Garder -----
+function CarteFocus({ carte }) {
+  const src = useSrcImage(carte)
+  const image = src || (carte.type === 'lien' ? carte.apercu : null)
+  return (
+    <div className="focus-carte">
+      {carte.type === 'image' && src && <img className="focus-image" src={src} alt="" />}
+      {carte.type === 'lien' && (
+        <>
+          {image && <img className="focus-apercu" src={image} alt=""
+                         onError={e => { e.currentTarget.style.display = 'none' }} />}
+          <div className="focus-corps">
+            <h2 className="focus-titre">{carte.titre || carte.url}</h2>
+            {carte.texte && <p className="focus-extrait">{carte.texte}</p>}
+            <p className="focus-source">{domaineDe(carte.url)}</p>
+          </div>
+        </>
+      )}
+      {carte.type === 'note' && (
+        <div className="focus-corps"><p className="focus-note">{carte.texte}</p></div>
+      )}
+    </div>
+  )
+}
+
+function VueSerendipity({ file, idx, ghosts, onGarder, onOublier, onRecommencer }) {
+  const carte = idx < file.length ? file[idx] : undefined
+  // Saute automatiquement les cartes déjà disparues (oubliées/supprimées).
+  useEffect(() => {
+    if (idx < file.length && !file[idx]) onGarder()
+  }, [idx, file, onGarder])
+
+  if (idx >= file.length) {
+    return (
+      <div className="seren">
+        <div className="seren-fin">
+          <div className="orbe" />
+          <h2>C'est tout pour cette fois.</h2>
+          <p>Reviens quand tu veux retomber par hasard sur tes cartes.</p>
+          <button className="bouton-creer-espace" onClick={onRecommencer}>↻ Recommencer</button>
+        </div>
+      </div>
+    )
+  }
+  if (!carte) return <div className="seren" />  // en cours de saut
+  return (
+    <div className="seren">
+      <div className="seren-nuees">
+        {ghosts.map((g, i) => <div className={'nuee n' + i} key={g.id}><Vignette carte={g} /></div>)}
+      </div>
+      <div className="seren-scene">
+        <div className="seren-carte" key={carte.id}><CarteFocus carte={carte} /></div>
+        <div className="seren-actions">
+          <button className="seren-bouton" onClick={onOublier}>Oublier</button>
+          <button className="seren-bouton garder" onClick={onGarder}>Garder</button>
+        </div>
+        <p className="seren-compteur">{idx + 1} / {file.length}</p>
+      </div>
+    </div>
+  )
+}
+
 // =================================================================
 export default function App() {
   const [modeExt] = useState(() => new URLSearchParams(window.location.search).get('via') === 'ext')
@@ -508,7 +613,8 @@ export default function App() {
   const [espaceActif, setEspaceActif] = useState(null)
   const [creationEspace, setCreationEspace] = useState(false)
   const [nomEspace, setNomEspace] = useState('')
-  const [graine, setGraine] = useState(0)
+  const [serenQueue, setSerenQueue] = useState([]) // ids des cartes mises en avant
+  const [serenIdx, setSerenIdx] = useState(0)
   const sync = useSync()
 
   // Capture (bookmarklet / iOS) — création réelle de la carte, une fois.
@@ -589,17 +695,27 @@ export default function App() {
 
   const espaceCourant = espaceActif ? espaces.find(e => e.id === espaceActif) : null
 
-  // Serendipity : un échantillon mélangé du contenu.
-  const melange = (() => {
+  // Serendipity : tire ~10 cartes au hasard et les met en avant une à une.
+  function lancerSerendipity() {
     const a = [...contenu]
-    let s = graine + 1
     for (let i = a.length - 1; i > 0; i--) {
-      s = (s * 9301 + 49297) % 233280
-      const j = Math.floor((s / 233280) * (i + 1))
+      const j = Math.floor(Math.random() * (i + 1))
       ;[a[i], a[j]] = [a[j], a[i]]
     }
-    return a.slice(0, 16)
-  })()
+    setSerenQueue(a.slice(0, 10).map(c => c.id))
+    setSerenIdx(0)
+    setVue('serendipity')
+  }
+  // File alignée sur la queue (null si la carte a été oubliée/supprimée),
+  // pour que l'index reste stable même après un « Oublier ».
+  const serenFile = serenQueue.map(id => contenu.find(c => c.id === id) || null)
+  const serenGhosts = contenu.filter(c => !serenQueue.includes(c.id) && (c.image || c.apercu)).slice(0, 6)
+  function serenGarder() { setSerenIdx(i => i + 1) }
+  function serenOublier() {
+    const c = serenFile[serenIdx]
+    if (c) supprimerCarte(c.id).then(sync.planifier)
+    setSerenIdx(i => i + 1)
+  }
 
   return (
     <div className="app">
@@ -621,7 +737,7 @@ export default function App() {
           <button className={'nav-lien' + (vue === 'espaces' ? ' actif' : '')}
                   onClick={() => setVue('espaces')}>Espaces</button>
           <button className={'nav-lien' + (vue === 'serendipity' ? ' actif' : '')}
-                  onClick={() => { setGraine(g => g + 1); setVue('serendipity') }}>Serendipity</button>
+                  onClick={lancerSerendipity}>Serendipity</button>
         </nav>
 
         {/* ====== VUE TOUT ====== */}
@@ -738,26 +854,19 @@ export default function App() {
 
         {/* ====== VUE SERENDIPITY ====== */}
         {vue === 'serendipity' && (
-          <>
-            <div className="entete-vue">
-              <h1 className="titre-serif">Serendipity</h1>
-              <button className="bouton-creer-espace" onClick={() => setGraine(g => g + 1)}>
-                ↻ Mélanger
-              </button>
-            </div>
-            {contenu.length === 0 ? (
-              <div className="vide"><div className="orbe" /><h2>Rien à redécouvrir encore.</h2>
-                <p>Garde quelques cartes, puis reviens ici pour retomber dessus par hasard.</p></div>
-            ) : (
-              <main className="grille">
-                {melange.map(c => (
-                  <Carte key={c.id} carte={c}
-                         onOuvrir={(carte, src) => setOuverte({ carte, src })}
-                         onModif={sync.planifier} />
-                ))}
-              </main>
-            )}
-          </>
+          contenu.length === 0 ? (
+            <div className="vide"><div className="orbe" /><h2>Rien à redécouvrir encore.</h2>
+              <p>Garde quelques cartes, puis reviens ici pour retomber dessus par hasard.</p></div>
+          ) : (
+            <VueSerendipity
+              file={serenFile}
+              idx={serenIdx}
+              ghosts={serenGhosts}
+              onGarder={serenGarder}
+              onOublier={serenOublier}
+              onRecommencer={lancerSerendipity}
+            />
+          )
         )}
       </div>
 
