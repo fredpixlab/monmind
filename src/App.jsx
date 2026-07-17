@@ -12,7 +12,7 @@ function domaineDe(url) {
   try { return new URL(url).hostname.replace(/^www\./, '') } catch { return url }
 }
 
-function Carte({ carte }) {
+function Carte({ carte, onOuvrir }) {
   // Pour les images stockées en Blob, on fabrique une URL d'affichage
   // (et on la libère quand la carte disparaît de l'écran).
   const [src, setSrc] = useState(null)
@@ -28,17 +28,27 @@ function Carte({ carte }) {
     day: 'numeric', month: 'short'
   })
 
+  // Cliquer une carte : un lien s'ouvre dans un nouvel onglet ;
+  // une image ou une note s'ouvre en grand dans la visionneuse.
+  function surClic() {
+    if (carte.type === 'lien') {
+      window.open(carte.url, '_blank', 'noopener')
+    } else {
+      onOuvrir(carte, src)
+    }
+  }
+
   return (
-    <article className="carte">
+    <article className="carte cliquable" onClick={surClic}>
       {carte.type === 'lien' && <div className="accent-lien" />}
       {src && <img src={src} alt={carte.texte || 'Image sauvegardée'} />}
       {(carte.type !== 'image' || carte.texte) && (
         <div className="contenu">
           {carte.type === 'lien' ? (
-            <a href={carte.url} target="_blank" rel="noreferrer">
+            <>
               <p className="lien-titre">{carte.titre || carte.url}</p>
               <p className="lien-domaine">{domaineDe(carte.url)}</p>
-            </a>
+            </>
           ) : (
             carte.texte && <p className="texte">{carte.texte}</p>
           )}
@@ -48,9 +58,28 @@ function Carte({ carte }) {
       <button
         className="supprimer"
         title="Supprimer"
-        onClick={() => supprimerCarte(carte.id)}
+        onClick={e => { e.stopPropagation(); supprimerCarte(carte.id) }}
       >×</button>
     </article>
+  )
+}
+
+// La visionneuse plein écran (lightbox) pour images et notes.
+function Visionneuse({ carte, src, fermer }) {
+  useEffect(() => {
+    const surTouche = e => { if (e.key === 'Escape') fermer() }
+    window.addEventListener('keydown', surTouche)
+    return () => window.removeEventListener('keydown', surTouche)
+  }, [fermer])
+
+  return (
+    <div className="voile-visionneuse" onClick={fermer}>
+      <button className="fermer-visionneuse" title="Fermer" onClick={fermer}>×</button>
+      <div className="cadre-visionneuse" onClick={e => e.stopPropagation()}>
+        {src && <img src={src} alt={carte.texte || 'Image'} />}
+        {carte.texte && <p className="legende-visionneuse">{carte.texte}</p>}
+      </div>
+    </div>
   )
 }
 
@@ -125,6 +154,7 @@ function Composeur({ fermer }) {
 export default function App() {
   const [recherche, setRecherche] = useState('')
   const [composeurOuvert, setComposeurOuvert] = useState(false)
+  const [ouverte, setOuverte] = useState(null) // { carte, src } pour la visionneuse
 
   // useLiveQuery : la grille se met à jour toute seule dès que la
   // base locale change (ajout, suppression…).
@@ -166,11 +196,16 @@ export default function App() {
       )}
 
       <main className="grille">
-        {cartes?.map(c => <Carte key={c.id} carte={c} />)}
+        {cartes?.map(c => (
+          <Carte key={c.id} carte={c} onOuvrir={(carte, src) => setOuverte({ carte, src })} />
+        ))}
       </main>
 
       <button className="ajouter" title="Ajouter" onClick={() => setComposeurOuvert(true)}>+</button>
       {composeurOuvert && <Composeur fermer={() => setComposeurOuvert(false)} />}
+      {ouverte && (
+        <Visionneuse carte={ouverte.carte} src={ouverte.src} fermer={() => setOuverte(null)} />
+      )}
     </>
   )
 }

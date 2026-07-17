@@ -101,6 +101,7 @@ body {
   animation: apparition .3s ease both;
 }
 .carte:hover { box-shadow: var(--ombre-lg); transform: translateY(-2px); }
+.carte.cliquable { cursor: pointer; }
 
 @keyframes apparition {
   from { opacity: 0; transform: translateY(8px); }
@@ -237,3 +238,43 @@ body {
   max-height: 180px; border-radius: 12px; margin-top: 12px;
   box-shadow: var(--ombre-sm);
 }
+
+/* ---------- Visionneuse plein écran (lightbox) ---------- */
+
+.voile-visionneuse {
+  position: fixed; inset: 0; z-index: 40;
+  background: hsla(30, 15%, 8%, .82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 40px;
+  animation: fondu .2s ease both;
+}
+
+.cadre-visionneuse {
+  max-width: min(1100px, 92vw); max-height: 90vh;
+  display: flex; flex-direction: column; align-items: center;
+  animation: apparition .25s ease both;
+}
+.cadre-visionneuse img {
+  max-width: 100%; max-height: 78vh;
+  border-radius: 12px;
+  box-shadow: var(--ombre-2xl, 0 20px 40px hsla(0,0%,0%,.4));
+  object-fit: contain;
+}
+.legende-visionneuse {
+  margin: 16px 0 0; max-width: 640px;
+  color: hsl(40, 20%, 92%); font-size: 16px; line-height: 1.6;
+  text-align: center; white-space: pre-wrap;
+}
+
+.fermer-visionneuse {
+  position: fixed; top: calc(16px + env(safe-area-inset-top)); right: 20px;
+  z-index: 41;
+  width: 44px; height: 44px; border: none; border-radius: 50%;
+  background: hsla(0, 0%, 100%, .14); color: white;
+  font-size: 24px; line-height: 1; cursor: pointer;
+  backdrop-filter: blur(6px);
+  transition: background .2s;
+}
+.fermer-visionneuse:hover { background: hsla(0, 0%, 100%, .26); }
