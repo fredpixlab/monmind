@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, ajouterCarte, supprimerCarte, estUneUrl } from './db.js'
 import { sync_configuree } from './config.js'
-import { initAuth, connecter, estDejaConnecte, synchroniser } from './drive.js'
+import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion } from './drive.js'
 
 // ---------------------------------------------------------------
 // MonMind — Phase 3 : squelette + cartes locales + sync Google Drive.
@@ -167,7 +167,14 @@ function useSync() {
       setEtat('ok')
     } catch (e) {
       console.error('[sync]', e)
-      setEtat('erreur')
+      // Jeton perdu / non renouvelable en silence → on réaffiche le
+      // bouton « Connecter » au lieu de rester bloqué sur « Sync… ».
+      if (e instanceof BesoinReconnexion || e?.name === 'BesoinReconnexion') {
+        await deconnecter().catch(() => {})
+        setEtat('deconnecte')
+      } else {
+        setEtat('erreur')
+      }
     }
   }, [])
 

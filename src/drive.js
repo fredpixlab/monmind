@@ -35,32 +35,50 @@ function attendreGIS() {
   })
 }
 
+// Erreur spécifique : le jeton n'a pas pu être obtenu sans interaction.
+// On l'utilise pour réafficher le bouton « Connecter » plutôt que de
+// rester bloqué.
+export class BesoinReconnexion extends Error {
+  constructor(cause) { super('Reconnexion Google nécessaire' + (cause ? ` (${cause})` : '')); this.name = 'BesoinReconnexion' }
+}
+
 export async function initAuth() {
   if (!CLIENT_ID) throw new Error('CLIENT_ID manquant (config.js)')
   await attendreGIS()
   tokenClient = window.google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: DRIVE_SCOPE,
-    callback: () => {} // remplacé à chaque demande
+    callback: () => {},        // remplacé à chaque demande
+    error_callback: () => {}   // idem — évite les blocages si le popup échoue
   })
 }
 
-// Demande un jeton d'accès. interactif=true montre l'écran Google la
-// 1re fois (consentement) ; ensuite on tente en silencieux (prompt:'').
+// Demande un jeton d'accès. interactif=true montre l'écran Google
+// (consentement) ; sinon on tente en silencieux (prompt:'').
+// Garde-fous : délai maximum + gestion de error_callback pour ne JAMAIS
+// rester bloqué en attente d'un jeton qui ne vient pas.
 function demanderJeton(interactif) {
   return new Promise((resolve, reject) => {
     if (!tokenClient) return reject(new Error('Auth non initialisée'))
+    let fini = false
+    const finir = (fn, arg) => { if (!fini) { fini = true; clearTimeout(minuteur); fn(arg) } }
+    const minuteur = setTimeout(
+      () => finir(reject, new BesoinReconnexion('délai dépassé')),
+      interactif ? 120000 : 15000
+    )
     tokenClient.callback = (rep) => {
-      if (rep.error) return reject(new Error(rep.error))
+      if (rep && rep.error) return finir(reject, new BesoinReconnexion(rep.error))
       jeton = { access_token: rep.access_token, expire: Date.now() + (rep.expires_in - 60) * 1000 }
-      resolve(jeton)
+      finir(resolve, jeton)
     }
+    tokenClient.error_callback = (err) => finir(reject, new BesoinReconnexion(err && err.type))
     tokenClient.requestAccessToken({ prompt: interactif ? 'consent' : '' })
   })
 }
 
 async function jetonValide() {
   if (jeton && Date.now() < jeton.expire) return jeton.access_token
+  console.log('[sync] demande de jeton silencieuse…')
   await demanderJeton(false) // silencieux
   return jeton.access_token
 }
@@ -229,10 +247,13 @@ export function synchroniser() {
 }
 
 async function _synchroniser() {
+  console.log('[sync] début')
   await jetonValide()
   await garantirDossiers()
+  console.log('[sync] dossiers OK', { racineId, cartesId })
 
   const distants = await listerCartesDrive()
+  console.log('[sync] fichiers distants :', distants.length)
 
   // Regroupe les fichiers distants par carte. On accepte plusieurs .md
   // ou images (doublons d'un ancien cycle) pour pouvoir les nettoyer.
@@ -306,6 +327,7 @@ async function _synchroniser() {
   }
 
   await setReglage('derniereSync', Date.now())
+  console.log('[sync] terminé', { envoyees, recues, suppr })
   return { envoyees, recues, suppr }
 }
 
