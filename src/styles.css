@@ -202,6 +202,23 @@ body {
   line-height: 1.4; overflow-wrap: anywhere;
 }
 
+/* Poster vidéo dans la grille */
+.media-poster { position: relative; }
+.media-poster img { display: block; width: 100%; height: auto; }
+.play-badge {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 46px; height: 46px; border-radius: 50%;
+  background: hsla(222, 25%, 12%, .55); color: white;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 17px; padding-left: 3px; backdrop-filter: blur(4px);
+  border: none; cursor: pointer;
+}
+.play-badge.grand { width: 66px; height: 66px; font-size: 24px; }
+
+/* Vidéo dans la vue détail */
+.dc-video { max-width: 100%; max-height: 92vh; border-radius: 14px; box-shadow: 0 24px 60px hsla(0,0%,0%,.45); background: #000; }
+.dc-video-poster { position: relative; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
 .carte .supprimer {
   position: absolute; top: 8px; right: 8px;
   width: 28px; height: 28px; border: none; border-radius: 50%;
@@ -351,6 +368,19 @@ body {
 .bouton-principal:hover { transform: translateY(-1px); box-shadow: var(--ombre-lg); }
 .bouton-principal:disabled { opacity: .4; cursor: default; transform: none; box-shadow: none; }
 .apercu-image { max-height: 180px; border-radius: 12px; margin-top: 12px; box-shadow: var(--ombre-sm); }
+
+/* ---------- Import mymind ---------- */
+
+.import-boite { max-width: 520px; }
+.import-titre { font-family: var(--serif); font-style: italic; font-size: 26px; margin: 0 0 14px; }
+.import-note { font-size: 15px; line-height: 1.6; color: var(--encre-2); margin: 0 0 18px; }
+.import-note code { background: hsl(228, 16%, 92%); padding: 1px 6px; border-radius: 6px; font-size: 13px; }
+.import-prog { margin-top: 18px; }
+.import-barre { height: 10px; border-radius: 999px; background: hsl(228, 16%, 90%); overflow: hidden; }
+.import-jauge { height: 100%; background: var(--degrade); transition: width .3s ease; }
+.import-compte { font-size: 15px; font-weight: 600; margin: 12px 0 2px; }
+.import-detail { font-size: 13px; color: var(--encre-3); margin: 0; }
+.import-erreur { font-size: 14px; color: hsl(6, 60%, 50%); margin: 14px 0 0; }
 
 /* ---------- Vue détail plein écran (deux colonnes) ---------- */
 

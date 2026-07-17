@@ -13,6 +13,7 @@
 // ==================================================================
 import { db, upsertDepuisDrive, getReglage, setReglage } from './db.js'
 import { CLIENT_ID, DRIVE_SCOPE, DOSSIER_RACINE, DOSSIER_CARTES } from './config.js'
+import { typeMime } from './vignette.js'
 
 const API = 'https://www.googleapis.com/drive/v3'
 const UPLOAD = 'https://www.googleapis.com/upload/drive/v3'
@@ -189,6 +190,85 @@ async function supprimerFichier(fileId) {
   await api(`/files/${fileId}`, { method: 'DELETE' })
 }
 
+// Upload « resumable » (pour les gros fichiers : vidéos, grosses images).
+// L'upload multipart simple est limité à ~5 Mo ; au-delà, on ouvre une
+// session resumable puis on envoie le contenu.
+async function televerserResumable(metadata, blob, contentType) {
+  const token = await jetonValide()
+  const initRep = await fetch(`${UPLOAD}/files?uploadType=resumable&fields=id,modifiedTime`, {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer ' + token,
+      'Content-Type': 'application/json; charset=UTF-8',
+      'X-Upload-Content-Type': contentType,
+      'X-Upload-Content-Length': String(blob.size)
+    },
+    body: JSON.stringify(metadata)
+  })
+  if (!initRep.ok) throw new Error(`Drive resumable init ${initRep.status}: ${(await initRep.text()).slice(0, 200)}`)
+  const session = initRep.headers.get('Location')
+  if (!session) throw new Error('Drive resumable : session URI manquante')
+  const putRep = await fetch(session, { method: 'PUT', headers: { 'Content-Type': contentType }, body: blob })
+  if (!putRep.ok) throw new Error(`Drive resumable put ${putRep.status}: ${(await putRep.text()).slice(0, 200)}`)
+  return putRep.json()
+}
+
+// Choisit multipart (petit) ou resumable (gros) selon la taille.
+function televerserFichier(metadata, blob, contentType) {
+  return blob.size > 5 * 1024 * 1024
+    ? televerserResumable(metadata, blob, contentType)
+    : televerser(null, metadata, blob, contentType)
+}
+
+// Pousse une carte importée (média « à la demande ») vers Drive :
+//   <id>.<ext>       le fichier complet (image/vidéo/pdf)
+//   <id>.thumb.jpg   la vignette (miniature légère)
+//   <id>.md          les métadonnées
+// L'appareil ne gardera en local que la vignette ; le fichier complet
+// sera récupéré depuis Drive à la demande.
+export async function pousserCarteImportee(carte, fichier, vignetteBlob) {
+  await jetonValide()
+  await garantirDossiers()
+  const ext = (carte.mediaExt || 'bin').toLowerCase()
+
+  const nomMedia = `${carte.id}.${ext}`
+  const media = await televerserFichier(
+    { name: nomMedia, parents: [cartesId], appProperties: { cardId: carte.id, kind: 'media', type: carte.type } },
+    fichier, fichier.type || typeMime(ext)
+  )
+
+  const nomVign = `${carte.id}.thumb.jpg`
+  const vign = await televerser(null,
+    { name: nomVign, parents: [cartesId], appProperties: { cardId: carte.id, kind: 'vignette' } },
+    vignetteBlob, 'image/jpeg')
+
+  const contenu = serialiserMd({ ...carte, vignetteNom: nomVign }, nomMedia)
+  const md = await televerser(null,
+    { name: `${carte.id}.md`, parents: [cartesId],
+      appProperties: { cardId: carte.id, modifieLe: String(carte.modifieLe), type: carte.type } },
+    new Blob([contenu]), 'text/markdown')
+
+  return { driveMediaId: media.id, driveVignetteId: vign.id, driveMdId: md.id, vignetteNom: nomVign }
+}
+
+// Pousse une carte importée SANS média (note / lien) : juste le .md.
+export async function pousserCarteTexte(carte) {
+  await jetonValide()
+  await garantirDossiers()
+  const contenu = serialiserMd(carte, '')
+  const md = await televerser(null,
+    { name: `${carte.id}.md`, parents: [cartesId],
+      appProperties: { cardId: carte.id, modifieLe: String(carte.modifieLe), type: carte.type } },
+    new Blob([contenu]), 'text/markdown')
+  return { driveMdId: md.id }
+}
+
+// Récupère un fichier complet depuis Drive (vue détail, à la demande).
+export async function telechargerMediaComplet(driveId) {
+  await jetonValide()
+  return telechargerBlob(driveId)
+}
+
 async function listerCartesDrive() {
   const fichiers = []
   let pageToken = null
@@ -232,7 +312,13 @@ function serialiserMd(carte, nomImage) {
     apercu: carte.apercu || '', tags: carte.tags || [], note: carte.note || '',
     espaces: carte.espaces || [],   // appartenance aux espaces (pin manuel)
     creeLe: carte.creeLe, modifieLe: carte.modifieLe,
-    image: nomImage || ''
+    image: nomImage || '',
+    // Médias « à la demande » (import mymind) : le fichier complet vit
+    // dans Drive, l'appareil ne garde qu'une vignette.
+    distant: carte.distant ? 1 : 0,
+    mediaExt: carte.mediaExt || '',
+    vignette: carte.vignetteNom || '',
+    source: carte.source || '', sourceId: carte.sourceId || ''
   }
   return `---\n${JSON.stringify(meta)}\n---\n${carte.texte || ''}`
 }
@@ -257,7 +343,12 @@ function choisirDernier(liste, cle) {
 // cycles lancés presque simultanément (ex. clic « Connecter » + retour
 // de focus) peuvent créer des fichiers en double sur Drive.
 let enCours = null
+// Pendant un import massif, on met la sync périodique en pause pour éviter
+// qu'elle ne pousse en double des cartes que l'import est en train d'écrire.
+let importEnCours = false
+export function marquerImport(actif) { importEnCours = actif }
 export function synchroniser() {
+  if (importEnCours) return Promise.resolve(null)
   if (enCours) return enCours
   enCours = _synchroniser().finally(() => { enCours = null })
   return enCours
@@ -274,14 +365,17 @@ async function _synchroniser() {
 
   // Regroupe les fichiers distants par carte. On accepte plusieurs .md
   // ou images (doublons d'un ancien cycle) pour pouvoir les nettoyer.
-  const parCarte = new Map() // cardId -> { mds:[], imgs:[], deleted, md, img }
+  const parCarte = new Map() // cardId -> { mds:[], imgs:[], deleted, md, img, media, vignette }
   for (const f of distants) {
     const id = f.appProperties?.cardId
     if (!id) continue
     const e = parCarte.get(id) || { mds: [], imgs: [] }
+    const kind = f.appProperties?.kind
     if (f.name.endsWith('.deleted')) e.deleted = f
-    else if (f.appProperties?.kind === 'image') e.imgs.push(f)
-    else e.mds.push(f)
+    else if (kind === 'image') e.imgs.push(f)      // legacy : image locale complète
+    else if (kind === 'media') e.media = f          // import : fichier complet (à la demande)
+    else if (kind === 'vignette') e.vignette = f    // import : miniature
+    else e.mds.push(f)                              // .md (métadonnées)
     parCarte.set(id, e)
   }
 
@@ -315,9 +409,11 @@ async function _synchroniser() {
 
     // 2) Suppression locale → on propage vers Drive
     if (locale?.supprime) {
-      if (dist?.md || dist?.img) {
+      if (dist?.md || dist?.img || dist?.media || dist?.vignette) {
         if (dist.md) await supprimerFichier(dist.md.id)
         if (dist.img) await supprimerFichier(dist.img.id)
+        if (dist.media) await supprimerFichier(dist.media.id)
+        if (dist.vignette) await supprimerFichier(dist.vignette.id)
         await televerser(null,
           { name: `${id}.deleted`, parents: [cartesId], appProperties: { cardId: id } },
           new Blob(['supprimé']), 'text/plain')
@@ -349,6 +445,20 @@ async function _synchroniser() {
 }
 
 async function envoyerCarte(carte, dist) {
+  // Carte à média « à la demande » (import) : le fichier complet et la
+  // vignette vivent déjà dans Drive et ne sont jamais renvoyés d'ici.
+  // On ne (ré)écrit que le .md — utile si l'utilisateur édite ses tags/note.
+  if (carte.distant) {
+    const nomMedia = carte.mediaExt ? `${carte.id}.${carte.mediaExt}` : ''
+    const contenu = serialiserMd(carte, nomMedia)
+    const r = await televerser(dist?.md?.id || carte.driveMdId || null,
+      { name: `${carte.id}.md`, parents: [cartesId],
+        appProperties: { cardId: carte.id, modifieLe: String(carte.modifieLe), type: carte.type } },
+      new Blob([contenu]), 'text/markdown')
+    await db.cartes.update(carte.id, { driveMdId: r.id })
+    return
+  }
+
   let nomImage = ''
   let imgId = carte.driveImgId || dist?.img?.id || null
 
@@ -379,10 +489,7 @@ async function recevoirCarte(id, dist) {
   if (!parsed) return
   const { meta, texte } = parsed
 
-  let image = null
-  if (dist.img) image = await telechargerBlob(dist.img.id)
-
-  await upsertDepuisDrive({
+  const base = {
     id,
     type: meta.type,
     titre: meta.titre || '',
@@ -392,11 +499,32 @@ async function recevoirCarte(id, dist) {
     note: meta.note || '',
     tags: meta.tags || [],
     espaces: meta.espaces || [],
-    image,
     supprime: 0,
     creeLe: meta.creeLe,
     modifieLe: meta.modifieLe,
-    driveMdId: dist.md.id,
-    driveImgId: dist.img?.id || null
-  })
+    driveMdId: dist.md.id
+  }
+
+  if (meta.distant) {
+    // Média « à la demande » : on ne télécharge QUE la vignette (légère).
+    // Le fichier complet reste dans Drive et sera chargé au besoin.
+    let vignette = null
+    if (dist.vignette) vignette = await telechargerBlob(dist.vignette.id).catch(() => null)
+    await upsertDepuisDrive({
+      ...base,
+      distant: 1,
+      mediaExt: meta.mediaExt || '',
+      vignette,
+      vignetteNom: meta.vignette || '',
+      image: null,
+      driveMediaId: dist.media?.id || null,
+      driveVignetteId: dist.vignette?.id || null,
+      source: meta.source || '',
+      sourceId: meta.sourceId || ''
+    })
+  } else {
+    let image = null
+    if (dist.img) image = await telechargerBlob(dist.img.id)
+    await upsertDepuisDrive({ ...base, image, driveImgId: dist.img?.id || null })
+  }
 }

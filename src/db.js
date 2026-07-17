@@ -88,6 +88,15 @@ export async function upsertDepuisDrive(carte) {
   await db.cartes.put(carte)
 }
 
+export async function getCarte(id) {
+  return db.cartes.get(id)
+}
+
+// Enregistre une carte importée (upsert par id, idempotent).
+export async function mettreCarteImportee(carte) {
+  await db.cartes.put(carte)
+}
+
 // Toutes les cartes visibles (non supprimées), les plus récentes d'abord.
 export async function cartesVisibles() {
   const toutes = await db.cartes.orderBy('creeLe').reverse().toArray()

@@ -2,7 +2,8 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, ajouterCarte, supprimerCarte, majCarte, estUneUrl, creerEspace, supprimerEspace, basculerEpingle } from './db.js'
 import { sync_configuree } from './config.js'
-import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion } from './drive.js'
+import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion, telechargerMediaComplet } from './drive.js'
+import { lancerImport } from './import-run.js'
 
 // ---------------------------------------------------------------
 // MonMind — interface façon mymind : accueil (recherche serif +
@@ -83,18 +84,20 @@ function creerCarteLien(cap) {
   })
 }
 
-// Petite vignette (gère les images stockées en Blob → URL d'affichage).
+// URL d'affichage d'une carte : image complète locale si on l'a, sinon
+// la vignette (cas des médias importés « à la demande »).
 function useSrcImage(carte) {
   const [src, setSrc] = useState(null)
   useEffect(() => {
-    if (carte?.image) {
-      const u = URL.createObjectURL(carte.image)
+    const blob = carte?.image || carte?.vignette
+    if (blob) {
+      const u = URL.createObjectURL(blob)
       setSrc(u)
       return () => URL.revokeObjectURL(u)
     } else {
       setSrc(null)
     }
-  }, [carte?.image])
+  }, [carte?.image, carte?.vignette])
   return src
 }
 
@@ -102,9 +105,9 @@ function useSrcImage(carte) {
 function Carte({ carte, onOuvrir, onModif }) {
   const src = useSrcImage(carte)
 
-  // La « légende » sous la carte (façon mymind) : le texte d'une image,
+  // La « légende » sous la carte (façon mymind) : le texte d'une image/vidéo,
   // ou le domaine d'un lien.
-  const legende = carte.type === 'image'
+  const legende = (carte.type === 'image' || carte.type === 'video')
     ? (carte.texte || '')
     : carte.type === 'lien'
       ? domaineDe(carte.url)
@@ -118,7 +121,10 @@ function Carte({ carte, onOuvrir, onModif }) {
           <img className="apercu-lien" src={carte.apercu} alt="" loading="lazy"
                onError={e => { e.currentTarget.style.display = 'none' }} />
         )}
-        {src && <img src={src} alt={carte.texte || 'Image'} />}
+        {src && carte.type === 'video' && (
+          <div className="media-poster"><img src={src} alt="" /><span className="play-badge">▶</span></div>
+        )}
+        {src && carte.type !== 'video' && <img src={src} alt={carte.texte || 'Image'} />}
 
         {carte.type === 'lien' && (
           <div className="contenu">
@@ -154,16 +160,42 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif }) {
   const [teinte, setTeinte] = useState(null)
   const [nouvelEspaceOuvert, setNouvelEspaceOuvert] = useState(false)
   const [nomNouvelEspace, setNomNouvelEspace] = useState('')
+  const [pleinSrc, setPleinSrc] = useState(null)     // image complète (depuis Drive)
+  const [videoSrc, setVideoSrc] = useState(null)     // vidéo complète (depuis Drive)
+  const [chargeMedia, setChargeMedia] = useState(false)
 
-  const image = src || (carte.type === 'lien' ? carte.apercu : null)
-  // Y a-t-il un média téléchargeable (image locale, aperçu, vidéo à venir) ?
-  const media = src || (carte.type === 'lien' && carte.apercu ? carte.apercu : null)
+  // Image affichée : la complète si chargée, sinon la vignette / l'aperçu.
+  const image = pleinSrc || src || (carte.type === 'lien' ? carte.apercu : null)
+  const aMediaDrive = !!carte.driveMediaId
 
   useEffect(() => {
     const surTouche = e => { if (e.key === 'Escape') fermer() }
     window.addEventListener('keydown', surTouche)
     return () => window.removeEventListener('keydown', surTouche)
   }, [fermer])
+
+  // Média « à la demande » : pour une image importée, on va chercher le
+  // fichier complet dans Drive dès l'ouverture (la vignette s'affiche en
+  // attendant). Pour une vidéo, on attend le clic « lecture ».
+  useEffect(() => {
+    let vivant = true, url = null
+    if (carte.distant && carte.type === 'image' && carte.driveMediaId) {
+      telechargerMediaComplet(carte.driveMediaId)
+        .then(b => { if (!vivant) return; url = URL.createObjectURL(b); setPleinSrc(url) })
+        .catch(() => {})
+    }
+    return () => { vivant = false; if (url) URL.revokeObjectURL(url) }
+  }, [carte.distant, carte.type, carte.driveMediaId])
+
+  async function chargerVideo() {
+    if (videoSrc || chargeMedia) return
+    setChargeMedia(true)
+    try {
+      const b = carte.driveMediaId ? await telechargerMediaComplet(carte.driveMediaId) : null
+      if (b) setVideoSrc(URL.createObjectURL(b))
+    } catch (e) { console.error('[video]', e) }
+    setChargeMedia(false)
+  }
 
   // Couleur dominante de l'image → fond teinté du panneau.
   useEffect(() => {
@@ -196,15 +228,27 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif }) {
   function jeter() {
     supprimerCarte(carte.id).then(() => { onModif(); fermer() })
   }
-  // Télécharge le média de la carte en local (image / vidéo à venir).
-  function telecharger() {
-    if (!media) return
-    const ext = carte.image ? (carte.image.type.split('/')[1] || 'png') : 'png'
+  const telechargeable = carte.type === 'image' || carte.type === 'video' ||
+    (carte.type === 'lien' && !!carte.apercu)
+
+  // Télécharge le média complet en local (image / vidéo / aperçu).
+  async function telecharger() {
+    let href, ext, revoke = false
+    if (carte.driveMediaId) {
+      const b = await telechargerMediaComplet(carte.driveMediaId)
+      href = URL.createObjectURL(b); revoke = true
+      ext = carte.mediaExt || (b.type.split('/')[1] || 'bin')
+    } else if (carte.image) {
+      href = URL.createObjectURL(carte.image); revoke = true
+      ext = carte.image.type.split('/')[1] || 'png'
+    } else if (carte.type === 'lien' && carte.apercu) {
+      href = carte.apercu; ext = 'jpg'
+    } else return
     const nom = (carte.titre || carte.texte || 'monmind').trim().slice(0, 40).replace(/[^\w\-]+/g, '-') || 'monmind'
     const a = document.createElement('a')
-    a.href = media
-    a.download = `${nom}.${ext}`
+    a.href = href; a.download = `${nom}.${ext}`
     document.body.appendChild(a); a.click(); a.remove()
+    if (revoke) setTimeout(() => URL.revokeObjectURL(href), 10000)
   }
   // Crée un nouvel espace et y épingle directement cette carte.
   async function creerEspaceEtEpingler() {
@@ -220,7 +264,8 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif }) {
   const fond = teinte
     ? `rgb(${teinte[0]}, ${teinte[1]}, ${teinte[2]})`
     : 'hsl(222, 22%, 22%)'
-  const titre = carte.titre || (carte.type === 'note' ? 'Note' : carte.type === 'image' ? 'Image' : domaineDe(carte.url))
+  const titre = carte.titre || (carte.type === 'note' ? 'Note' : carte.type === 'image' ? 'Image'
+    : carte.type === 'video' ? 'Vidéo' : domaineDe(carte.url))
 
   return (
     <div className="detail-voile" style={{ background: fond }} onClick={fermer}>
@@ -242,8 +287,18 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif }) {
               {carte.texte && <div className="dc-texte">{carte.texte}</div>}
             </div>
           )}
-          {carte.type === 'image' && src && (
-            <img className="dc-image-nue" src={src} alt={carte.texte || 'Image'} />
+          {carte.type === 'image' && image && (
+            <img className="dc-image-nue" src={image} alt={carte.texte || 'Image'} />
+          )}
+          {carte.type === 'video' && (
+            videoSrc ? (
+              <video className="dc-video" src={videoSrc} controls autoPlay playsInline />
+            ) : (
+              <div className="dc-video-poster" onClick={chargerVideo}>
+                {image && <img className="dc-image-nue" src={image} alt="" />}
+                <button className="play-badge grand" title="Lire la vidéo">{chargeMedia ? '…' : '▶'}</button>
+              </div>
+            )
           )}
           {carte.type === 'note' && (
             <div className="dc-carte dc-note">
@@ -322,7 +377,7 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif }) {
           )}
 
           <div className="dp-actions">
-            {media && (
+            {telechargeable && (
               <button className="dp-icone" title="Télécharger en local" onClick={telecharger}>↓</button>
             )}
             <button className="dp-icone" title="Ranger dans un nouvel espace"
@@ -601,6 +656,87 @@ function VueSerendipity({ file, idx, ghosts, onGarder, onOublier, onRecommencer 
   )
 }
 
+// --- Écran d'import depuis mymind --------------------------------
+function ImportMymind({ pret, brancher, fermer, onModif }) {
+  const [prog, setProg] = useState(null)
+  const [enCours, setEnCours] = useState(false)
+  const [err, setErr] = useState(null)
+  const supporte = typeof window !== 'undefined' && 'showDirectoryPicker' in window
+
+  async function choisir() {
+    setErr(null)
+    let handle
+    try { handle = await window.showDirectoryPicker({ mode: 'read' }) }
+    catch { return } // annulé par l'utilisateur
+    setEnCours(true)
+    try {
+      await lancerImport(handle, p => setProg({ ...p }))
+      onModif?.()
+    } catch (e) { console.error('[import]', e); setErr(e.message || "Erreur pendant l'import") }
+    setEnCours(false)
+  }
+
+  const pct = prog ? Math.round((prog.faits / (prog.total || 1)) * 100) : 0
+
+  return (
+    <div className="voile" onClick={e => { if (e.target === e.currentTarget && !enCours) fermer() }}>
+      <div className="composeur import-boite">
+        <h2 className="import-titre">Importer depuis mymind</h2>
+
+        {!supporte && (
+          <p className="import-note">Cet import a besoin de <strong>Chrome</strong> (ou Edge) sur ordinateur pour lire un dossier local. Ouvre MonMind dans Chrome pour importer.</p>
+        )}
+
+        {supporte && !pret && !prog && (
+          <>
+            <p className="import-note">Connecte d'abord <strong>Google Drive</strong> : c'est là que l'import déposera tes fichiers.</p>
+            <button className="bouton-principal" onClick={brancher}>Connecter Google Drive</button>
+          </>
+        )}
+
+        {supporte && pret && !prog && !enCours && (
+          <>
+            <p className="import-note">Choisis le dossier de ton export mymind (celui qui contient <code>cards.csv</code> et les fichiers). MonMind va lire le CSV, recréer tes cartes, et envoyer les médias dans ton Drive. <strong>Garde cet onglet ouvert</strong> pendant l'opération — ça peut durer un bon moment (plusieurs Go).</p>
+            <button className="bouton-principal" onClick={choisir}>Choisir le dossier de l'export…</button>
+          </>
+        )}
+
+        {prog && (
+          <div className="import-prog">
+            <div className="import-barre"><div className="import-jauge" style={{ width: pct + '%' }} /></div>
+            <p className="import-compte">
+              {prog.faits} / {prog.total}
+              {prog.phase === 'sync' && ' — finalisation des textes…'}
+              {prog.phase === 'fini' && ' — terminé ✓'}
+            </p>
+            <p className="import-detail">
+              {prog.medias || 0} médias · {prog.textes || 0} textes
+              {prog.sautes ? ` · ${prog.sautes} déjà faits` : ''}
+              {prog.manquants ? ` · ${prog.manquants} fichiers manquants` : ''}
+              {prog.erreurs ? ` · ${prog.erreurs} erreurs` : ''}
+            </p>
+          </div>
+        )}
+
+        {prog?.phase === 'auth' && (
+          <>
+            <p className="import-erreur">La connexion Google a expiré pendant l'import. Reconnecte Drive puis relance — l'import <strong>reprendra où il s'est arrêté</strong>.</p>
+            <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+              <button className="bouton-second" onClick={brancher}>Reconnecter Drive</button>
+              <button className="bouton-principal" onClick={choisir}>Reprendre l'import…</button>
+            </div>
+          </>
+        )}
+
+        {err && <p className="import-erreur">{err}</p>}
+        {prog?.phase === 'fini' && (
+          <button className="bouton-principal" onClick={fermer} style={{ marginTop: 8 }}>Fermer</button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // =================================================================
 export default function App() {
   const [modeExt] = useState(() => new URLSearchParams(window.location.search).get('via') === 'ext')
@@ -613,6 +749,7 @@ export default function App() {
   const [espaceActif, setEspaceActif] = useState(null)
   const [creationEspace, setCreationEspace] = useState(false)
   const [nomEspace, setNomEspace] = useState('')
+  const [importOuvert, setImportOuvert] = useState(false)
   const [serenQueue, setSerenQueue] = useState([]) // ids des cartes mises en avant
   const [serenIdx, setSerenIdx] = useState(0)
   const sync = useSync()
@@ -725,6 +862,7 @@ export default function App() {
         <div className="rail-marque">MonMind</div>
         <div className="rail-bas">
           <StatutSync etat={sync.etat} brancher={sync.brancher} lancer={sync.lancer} />
+          <button className="rail-bouton" title="Importer depuis mymind" onClick={() => setImportOuvert(true)}>↓↓</button>
           <a className="rail-bouton" href="capturer.html" title="Configurer la capture">⚙</a>
         </div>
       </aside>
@@ -874,6 +1012,14 @@ export default function App() {
       <button className="ajouter" title="Ajouter" onClick={() => setComposeurOuvert(true)}>+</button>
 
       {composeurOuvert && <Composeur fermer={() => setComposeurOuvert(false)} onAjout={sync.planifier} />}
+      {importOuvert && (
+        <ImportMymind
+          pret={['ok', 'pret', 'sync'].includes(sync.etat)}
+          brancher={sync.brancher}
+          fermer={() => setImportOuvert(false)}
+          onModif={sync.planifier}
+        />
+      )}
       {ouverte && (
         <Detail
           key={ouverte.carte.id}
