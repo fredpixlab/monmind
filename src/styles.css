@@ -461,7 +461,10 @@ body {
 .dc-source:hover { text-decoration: underline; }
 .dc-image { display: block; width: 100%; border-radius: 12px; margin: 4px 0 22px; box-shadow: var(--ombre-sm); }
 .dc-texte { font-size: 16.5px; line-height: 1.7; color: var(--encre); white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
-.dc-note { display: flex; align-items: center; min-width: 0; }
+/* `safe center` : centre les notes courtes, MAIS bascule en haut-de-page dès
+   que le texte dépasse la hauteur — sinon le centrage rend le début du texte
+   inatteignable au défilement (piège flexbox classique). */
+.dc-note { display: flex; align-items: safe center; min-width: 0; }
 .dc-note-texte { font-family: var(--serif); font-size: 24px; line-height: 1.5; margin: 0; white-space: pre-wrap;
   overflow-wrap: anywhere; word-break: break-word; min-width: 0; max-width: 100%; }
 
