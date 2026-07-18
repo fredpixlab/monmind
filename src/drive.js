@@ -85,7 +85,8 @@ function demanderJeton(prompt) {
     )
     tokenClient.callback = (rep) => {
       if (rep && rep.error) return finir(reject, new BesoinReconnexion(rep.error))
-      jeton = { access_token: rep.access_token, expire: Date.now() + (rep.expires_in - 60) * 1000 }
+      const duree = (rep.expires_in && rep.expires_in > 0) ? rep.expires_in : 3600  // garde-fou
+      jeton = { access_token: rep.access_token, expire: Date.now() + (duree - 60) * 1000 }
       setReglage('jeton', jeton).catch(() => {})   // persiste pour les rechargements
       finir(resolve, jeton)
     }
@@ -107,6 +108,18 @@ async function jetonValide() {
   // Jeton absent ou expiré → tentative silencieuse (sans fenêtre).
   await demanderJeton('none')
   return jeton.access_token
+}
+
+// Rafraîchit le jeton EN AVANCE (en tâche de fond) quand il lui reste moins
+// de 5 min de validité. Appelé périodiquement : ainsi le jeton est toujours
+// frais au moment où l'utilisateur ouvre une carte, et le petit
+// rafraîchissement Google n'apparaît jamais pendant un clic.
+export async function rafraichirJeton() {
+  if (!jeton) await chargerJetonPersiste()
+  if (!jeton) return
+  if (Date.now() > jeton.expire - 5 * 60 * 1000) {
+    try { await demanderJeton('none') } catch { /* on retentera plus tard */ }
+  }
 }
 
 // Connexion volontaire (clic sur le bouton). Montre le sélecteur Google

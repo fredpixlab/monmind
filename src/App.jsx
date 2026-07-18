@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, ajouterCarte, supprimerCarte, majCarte, estUneUrl, creerEspace, supprimerEspace, basculerEpingle } from './db.js'
 import { sync_configuree } from './config.js'
-import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion, telechargerMediaComplet } from './drive.js'
+import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion, telechargerMediaComplet, rafraichirJeton } from './drive.js'
 import { lancerImport } from './import-run.js'
 
 // ---------------------------------------------------------------
@@ -493,10 +493,13 @@ function useSync() {
       else setEtat('deconnecte')
     })().catch(e => { console.error(e); setEtat('erreur') })
 
+    // Garde le jeton frais en tâche de fond (toutes les 2 min) pour qu'aucun
+    // rafraîchissement Google n'apparaisse pendant l'ouverture d'une carte.
+    const gardeJeton = setInterval(() => { rafraichirJeton().catch(() => {}) }, 120000)
     const intervalle = setInterval(lancer, 60000)
     const surFocus = () => lancer()
     window.addEventListener('focus', surFocus)
-    return () => { clearInterval(intervalle); window.removeEventListener('focus', surFocus) }
+    return () => { clearInterval(intervalle); clearInterval(gardeJeton); window.removeEventListener('focus', surFocus) }
   }, [lancer])
 
   const brancher = useCallback(async () => {
