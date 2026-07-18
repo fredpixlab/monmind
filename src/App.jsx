@@ -199,6 +199,8 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
   const [nouvelEspaceOuvert, setNouvelEspaceOuvert] = useState(false)
   const [nomNouvelEspace, setNomNouvelEspace] = useState('')
   const [pleinSrc, setPleinSrc] = useState(null)     // image complète (depuis Drive)
+  const [chargePlein, setChargePlein] = useState(false) // téléchargement HD en cours
+  const [pleinErreur, setPleinErreur] = useState(false) // HD indisponible (jeton/hors-ligne)
   const [videoSrc, setVideoSrc] = useState(null)     // vidéo complète (depuis Drive)
   const [chargeMedia, setChargeMedia] = useState(false)
   const [videoErreur, setVideoErreur] = useState(false)
@@ -222,10 +224,31 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
   // attendant). Pour une vidéo, on attend le clic « lecture ».
   useEffect(() => {
     let vivant = true, url = null
+    // On repart de zéro à CHAQUE carte (navigation ← →) : sinon l'image HD de
+    // la carte précédente resterait affichée le temps du nouveau téléchargement.
+    setPleinSrc(null); setPleinErreur(false); setChargePlein(false)
     if (carte.distant && carte.type === 'image' && carte.driveMediaId) {
-      telechargerMediaComplet(carte.driveMediaId)
-        .then(b => { if (!vivant) return; url = URL.createObjectURL(b); setPleinSrc(url) })
-        .catch(() => {})
+      setChargePlein(true)
+      ;(async () => {
+        try {
+          let b
+          try {
+            b = await telechargerMediaComplet(carte.driveMediaId)
+          } catch (e) {
+            // Cause n°1 d'une image qui reste floue : le jeton Drive a expiré et
+            // le téléchargement HD échoue en silence. On tente un rafraîchissement
+            // silencieux, puis un seul nouvel essai avant d'abandonner proprement.
+            await rafraichirJeton().catch(() => {})
+            b = await telechargerMediaComplet(carte.driveMediaId)
+          }
+          if (!vivant) return
+          url = URL.createObjectURL(b); setPleinSrc(url)
+        } catch (e) {
+          if (vivant) setPleinErreur(true)
+        } finally {
+          if (vivant) setChargePlein(false)
+        }
+      })()
     }
     return () => { vivant = false; if (url) URL.revokeObjectURL(url) }
   }, [carte.distant, carte.type, carte.driveMediaId])
@@ -357,7 +380,17 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
             </div>
           )}
           {carte.type === 'image' && image && (
-            <img className="dc-image-nue" src={image} alt={carte.texte || 'Image'} />
+            <div className="dc-image-enveloppe">
+              <img className="dc-image-nue" src={image} alt={carte.texte || 'Image'} />
+              {aMediaDrive && chargePlein && !pleinSrc && (
+                <span className="dc-hd dc-hd-charge">Chargement HD…</span>
+              )}
+              {aMediaDrive && pleinErreur && !pleinSrc && (
+                <span className="dc-hd dc-hd-echec" title="Reconnecte Google Drive (à gauche) pour charger la version haute résolution.">
+                  Aperçu — HD indisponible, reconnecte Drive
+                </span>
+              )}
+            </div>
           )}
           {carte.type === 'pdf' && (
             <div className="dc-video-poster dc-video-echec">
@@ -1031,13 +1064,18 @@ export default function App() {
       .filter(c => c.supprime && c.type !== 'espace')
       .sort((a, b) => (b.supprimeLe || 0) - (a.supprimeLe || 0))
 
-    return { tags, espaces, contenu, corbeille }
+    // Avancement OCR : combien d'images portent déjà du texte reconnu.
+    const imgs = contenu.filter(c => c.type === 'image')
+    const ocr = { total: imgs.length, faites: imgs.filter(c => (c.texteImage || '').trim()).length }
+
+    return { tags, espaces, contenu, corbeille, ocr }
   }, [])
 
   const tousTags = base?.tags || []
   const espaces = base?.espaces || []
   const contenu = useMemo(() => base?.contenu || [], [base])
   const corbeille = base?.corbeille || []
+  const ocr = base?.ocr || { total: 0, faites: 0 }
 
   // Index plein-texte MiniSearch : reconstruit UNIQUEMENT quand la liste
   // des cartes change (pas à chaque frappe). ~2300 cartes → construction
@@ -1171,6 +1209,17 @@ export default function App() {
                 value={recherche}
                 onChange={e => setRecherche(e.target.value)}
               />
+              {ocr.total > 0 && ocr.faites < ocr.total && (
+                <p className="hero-ocr" title="Texte lu dans les images (OCR). Se complète au fil des synchros et de la passe Apple mensuelle.">
+                  Reconnaissance du texte des images : {ocr.faites} / {ocr.total}
+                  {' '}({Math.round(ocr.faites / ocr.total * 100)} %)
+                </p>
+              )}
+              {ocr.total > 0 && ocr.faites >= ocr.total && (
+                <p className="hero-ocr hero-ocr-ok" title="Toutes les images portent du texte reconnu.">
+                  ✓ Texte reconnu sur les {ocr.total} images
+                </p>
+              )}
             </div>
 
             {espaceCourant && (
