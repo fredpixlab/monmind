@@ -31,9 +31,14 @@ function controleurDelai(ms) {
 }
 
 let tokenClient = null
-let jeton = null          // { access_token, expire }  (en mémoire, jamais stocké sur disque)
+let jeton = null          // { access_token, expire }  (persisté dans IndexedDB)
 let racineId = null
 let cartesId = null
+// Certains navigateurs (cookies tiers bloqués) empêchent le renouvellement
+// SILENCIEUX du jeton : Google ouvre alors un mini-popup qui se referme
+// (popup_closed). Dès qu'on détecte ça, on cesse de tenter le silencieux
+// (donc plus de flash) et on demande à l'utilisateur de cliquer « Connecter ».
+let silentBloque = false
 
 // ---- Authentification -------------------------------------------
 
@@ -57,6 +62,7 @@ export class BesoinReconnexion extends Error {
 
 export async function initAuth() {
   if (!CLIENT_ID) throw new Error('CLIENT_ID manquant (config.js)')
+  silentBloque = (await getReglage('silentBloque', false)) === true
   await attendreGIS()
   tokenClient = window.google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
@@ -84,15 +90,27 @@ function demanderJeton(prompt) {
       prompt === 'none' ? 12000 : 120000
     )
     tokenClient.callback = (rep) => {
-      if (rep && rep.error) return finir(reject, new BesoinReconnexion(rep.error))
+      if (rep && rep.error) {
+        if (prompt === 'none') marquerSilentBloque()
+        return finir(reject, new BesoinReconnexion(rep.error))
+      }
       const duree = (rep.expires_in && rep.expires_in > 0) ? rep.expires_in : 3600  // garde-fou
       jeton = { access_token: rep.access_token, expire: Date.now() + (duree - 60) * 1000 }
       setReglage('jeton', jeton).catch(() => {})   // persiste pour les rechargements
       finir(resolve, jeton)
     }
-    tokenClient.error_callback = (err) => finir(reject, new BesoinReconnexion(err && err.type))
+    tokenClient.error_callback = (err) => {
+      // Silencieux bloqué (popup_closed / COOP…) → on cesse d'insister.
+      if (prompt === 'none') marquerSilentBloque()
+      finir(reject, new BesoinReconnexion(err && err.type))
+    }
     tokenClient.requestAccessToken({ prompt })
   })
+}
+
+function marquerSilentBloque() {
+  silentBloque = true
+  setReglage('silentBloque', true).catch(() => {})
 }
 
 // Recharge le jeton persisté (au démarrage), s'il est encore valide.
@@ -102,19 +120,27 @@ async function chargerJetonPersiste() {
   if (j && j.access_token && Date.now() < j.expire) jeton = j
 }
 
+// Le jeton courant s'il est valide, SANS jamais déclencher de fenêtre Google.
+// Utilisé par l'affichage (ouverture d'une carte) : pas de popup surprise.
+export async function jetonPret() {
+  if (!jeton) await chargerJetonPersiste()
+  return (jeton && Date.now() < jeton.expire) ? jeton.access_token : null
+}
+
 async function jetonValide() {
   if (!jeton) await chargerJetonPersiste()
   if (jeton && Date.now() < jeton.expire) return jeton.access_token
-  // Jeton absent ou expiré → tentative silencieuse (sans fenêtre).
+  // Silencieux connu comme bloqué → inutile de retenter (ça ne ferait que
+  // clignoter) : on demande une reconnexion volontaire.
+  if (silentBloque) throw new BesoinReconnexion('silencieux bloqué')
   await demanderJeton('none')
   return jeton.access_token
 }
 
-// Rafraîchit le jeton EN AVANCE (en tâche de fond) quand il lui reste moins
-// de 5 min de validité. Appelé périodiquement : ainsi le jeton est toujours
-// frais au moment où l'utilisateur ouvre une carte, et le petit
-// rafraîchissement Google n'apparaît jamais pendant un clic.
+// Rafraîchit le jeton en tâche de fond quand il lui reste peu de validité —
+// SEULEMENT si le renouvellement silencieux fonctionne sur ce navigateur.
 export async function rafraichirJeton() {
+  if (silentBloque) return
   if (!jeton) await chargerJetonPersiste()
   if (!jeton) return
   if (Date.now() > jeton.expire - 5 * 60 * 1000) {
@@ -123,10 +149,13 @@ export async function rafraichirJeton() {
 }
 
 // Connexion volontaire (clic sur le bouton). Montre le sélecteur Google
-// (et le consentement la première fois seulement).
+// (et le consentement la première fois seulement). Réactive le silencieux
+// (peut-être que les cookies ont été rétablis entre-temps).
 export async function connecter() {
   if (!tokenClient) await initAuth()
   await demanderJeton('')
+  silentBloque = false
+  await setReglage('silentBloque', false).catch(() => {})
   await setReglage('driveConnecte', true)
   return true
 }
@@ -309,9 +338,18 @@ export async function pousserCarteTexte(carte) {
 }
 
 // Récupère un fichier complet depuis Drive (vue détail, à la demande).
+// Récupère un fichier complet depuis Drive (vue détail / téléchargement).
+// N'utilise QUE le jeton déjà valide : si le jeton est expiré, on lève une
+// erreur (l'appelant se contente alors d'afficher la vignette) — jamais de
+// popup Google surprise pendant la simple ouverture d'une carte.
 export async function telechargerMediaComplet(driveId) {
-  await jetonValide()
-  return telechargerBlob(driveId)
+  const token = await jetonPret()
+  if (!token) throw new BesoinReconnexion('jeton expiré')
+  const rep = await fetch(`${API}/files/${driveId}?alt=media`, {
+    headers: { Authorization: 'Bearer ' + token }
+  })
+  if (!rep.ok) throw new Error(`Drive ${rep.status}`)
+  return rep.blob()
 }
 
 async function listerCartesDrive() {
