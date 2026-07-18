@@ -689,3 +689,21 @@ body {
   border: 1px solid hsl(6, 50%, 78%); background: hsl(6, 70%, 97%); color: hsl(6, 55%, 45%);
 }
 .bouton-danger:hover { background: hsl(6, 70%, 94%); }
+
+/* ---------- Voile de dépôt (glisser-déposer image / vidéo / PDF) ---------- */
+.depot-voile {
+  position: fixed; inset: 0; z-index: 80; pointer-events: none;
+  display: flex; align-items: center; justify-content: center;
+  background: hsla(228, 30%, 12%, .45); backdrop-filter: blur(3px);
+  animation: monte-annul .15s ease;
+}
+.depot-carte {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  padding: 44px 66px; border-radius: 22px; text-align: center;
+  background: var(--carte); box-shadow: var(--ombre-lg);
+  border: 2px dashed hsl(18, 85%, 60%);
+}
+.depot-carte strong { font-size: 20px; color: var(--encre); }
+.depot-carte p { margin: 0; font-size: 13px; color: var(--encre-2); letter-spacing: .03em; }
+.depot-orbe { width: 54px; height: 54px; border-radius: 50%; background: var(--degrade); box-shadow: var(--ombre-sm); }
+.depot-toast { background: hsl(150, 26%, 26%); }

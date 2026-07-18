@@ -66,6 +66,26 @@ export function vignetteVideo(blob) {
   })
 }
 
+// Vignette « couverture » pour un PDF (on ne rend pas la 1re page : tuile
+// document propre avec un bandeau rouge « PDF »). Léger, sans dépendance.
+export function vignettePdf() {
+  const c = document.createElement('canvas')
+  c.width = 480; c.height = 620
+  const x = c.getContext('2d')
+  x.fillStyle = '#efece6'; x.fillRect(0, 0, 480, 620)
+  // feuille
+  x.fillStyle = '#ffffff'; x.fillRect(70, 55, 340, 500)
+  x.strokeStyle = '#d9d5cc'; x.lineWidth = 2; x.strokeRect(70, 55, 340, 500)
+  // lignes de texte factices
+  x.fillStyle = '#d5d0c6'
+  for (let i = 0; i < 8; i++) x.fillRect(100, 100 + i * 34, 280 - (i % 3) * 46, 9)
+  // bandeau PDF
+  x.fillStyle = '#e0463a'; x.fillRect(70, 470, 340, 85)
+  x.fillStyle = '#ffffff'; x.font = 'bold 46px sans-serif'; x.textAlign = 'center'
+  x.fillText('PDF', 240, 528)
+  return new Promise(res => c.toBlob(b => res(b), 'image/jpeg', 0.85))
+}
+
 // Extension → type MIME (pour l'upload vers Drive).
 export function typeMime(ext) {
   const map = {

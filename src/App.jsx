@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, ajouterCarte, supprimerCarte, restaurerCarte, majCarte, estUneUrl, creerEspace, supprimerEspace, basculerEpingle, membresEspace, semerSpacesMymind, DUREE_CORBEILLE } from './db.js'
 import { construireIndex, rechercher } from './recherche.js'
+import { ajouterMediaDepuisFichier, estMediaSupporte } from './ajout-media.js'
 import { sync_configuree } from './config.js'
 import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion, telechargerMediaComplet, rafraichirJeton, purgerCarte } from './drive.js'
 import { lancerImport } from './import-run.js'
@@ -129,9 +130,11 @@ function Carte({ carte, onOuvrir, onModif, onSupprimer }) {
   // ou le domaine d'un lien.
   const legende = (carte.type === 'image' || carte.type === 'video')
     ? (carte.texte || '')
-    : carte.type === 'lien'
-      ? domaineDe(carte.url)
-      : ''
+    : carte.type === 'pdf'
+      ? (carte.titre || 'PDF')
+      : carte.type === 'lien'
+        ? domaineDe(carte.url)
+        : ''
 
   return (
     <div className="brique">
@@ -333,6 +336,21 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
           )}
           {carte.type === 'image' && image && (
             <img className="dc-image-nue" src={image} alt={carte.texte || 'Image'} />
+          )}
+          {carte.type === 'pdf' && (
+            <div className="dc-video-poster dc-video-echec">
+              {image && <img className="dc-image-nue" src={image} alt="" />}
+              <div className="dc-video-msg">
+                <p>Document PDF</p>
+                <div className="dc-video-actions">
+                  {carte.driveMediaId && (
+                    <a className="bouton-principal" target="_blank" rel="noreferrer"
+                       href={`https://drive.google.com/file/d/${carte.driveMediaId}/view`}>Ouvrir dans Drive</a>
+                  )}
+                  <button className="bouton-lien" onClick={telecharger}>Télécharger</button>
+                </div>
+              </div>
+            </div>
           )}
           {carte.type === 'video' && (
             videoErreur ? (
@@ -838,6 +856,11 @@ export default function App() {
   const [annulSuppr, setAnnulSuppr] = useState(null) // carte récemment supprimée (bandeau « Annuler »)
   const timerAnnul = useRef(null)
   const nbCol = useNbColonnes()
+  const [survolFichier, setSurvolFichier] = useState(false) // un fichier est glissé au-dessus
+  const [depotEnCours, setDepotEnCours] = useState(false)   // ajout média en cours
+  const [depotMsg, setDepotMsg] = useState(null)            // toast de résultat du dépôt
+  const dragCompteur = useRef(0)
+  const timerDepot = useRef(null)
   const sync = useSync()
 
   // Suppression avec fenêtre d'annulation : la carte part en corbeille
@@ -873,6 +896,47 @@ export default function App() {
     if (!corbeille.length) return
     if (!window.confirm(`Vider la corbeille ? ${corbeille.length} carte(s) seront supprimées définitivement.`)) return
     corbeille.forEach(purgerDefinitivement)
+  }
+
+  // --- Glisser-déposer de médias (image / vidéo / PDF) dans la fenêtre ---
+  function contientFichiers(e) {
+    return Array.from(e.dataTransfer?.types || []).includes('Files')
+  }
+  function onDragEnter(e) {
+    if (!contientFichiers(e)) return
+    e.preventDefault()
+    dragCompteur.current++
+    setSurvolFichier(true)
+  }
+  function onDragOver(e) { if (contientFichiers(e)) e.preventDefault() }
+  function onDragLeave(e) {
+    if (!contientFichiers(e)) return
+    dragCompteur.current = Math.max(0, dragCompteur.current - 1)
+    if (dragCompteur.current === 0) setSurvolFichier(false)
+  }
+  function toastDepot(msg) {
+    setDepotMsg(msg)
+    clearTimeout(timerDepot.current)
+    timerDepot.current = setTimeout(() => setDepotMsg(null), 4500)
+  }
+  async function onDrop(e) {
+    if (!contientFichiers(e)) return
+    e.preventDefault()
+    dragCompteur.current = 0
+    setSurvolFichier(false)
+    const medias = Array.from(e.dataTransfer?.files || []).filter(estMediaSupporte)
+    if (!medias.length) { toastDepot('Formats acceptés : images, vidéos, PDF.'); return }
+    setDepotEnCours(true)
+    let ok = 0, besoinDrive = 0
+    for (const f of medias) {
+      try { (await ajouterMediaDepuisFichier(f)) === 'besoin-drive' ? besoinDrive++ : ok++ }
+      catch (err) { console.error('[depot]', err) }
+    }
+    setDepotEnCours(false)
+    sync.planifier()
+    let msg = ok ? `${ok} média${ok > 1 ? 's' : ''} ajouté${ok > 1 ? 's' : ''}` : ''
+    if (besoinDrive) msg += (msg ? ' · ' : '') + `${besoinDrive} en attente : connecte Google Drive`
+    toastDepot(msg || 'Rien ajouté')
   }
 
   // Capture (bookmarklet / iOS) — création réelle de la carte, une fois.
@@ -1004,7 +1068,8 @@ export default function App() {
   }
 
   return (
-    <div className="app">
+    <div className="app" onDragEnter={onDragEnter} onDragOver={onDragOver}
+         onDragLeave={onDragLeave} onDrop={onDrop}>
       {/* ---- Rail gauche ---- */}
       <aside className="rail">
         <div className="rail-orbe" />
@@ -1241,6 +1306,18 @@ export default function App() {
           <span>Carte supprimée</span>
           <button onClick={annulerSuppression}>Annuler</button>
         </div>
+      )}
+      {(survolFichier || depotEnCours) && (
+        <div className="depot-voile">
+          <div className="depot-carte">
+            <div className="depot-orbe" />
+            <strong>{depotEnCours ? 'Ajout au coffre…' : 'Dépose pour ajouter au coffre'}</strong>
+            <p>Images · Vidéos · PDF</p>
+          </div>
+        </div>
+      )}
+      {depotMsg && (
+        <div className="toast-annul depot-toast"><span>{depotMsg}</span></div>
       )}
     </div>
   )
