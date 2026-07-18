@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>MonCoffre — Guide de démarrage</title>
+<style>
+  :root{
+    --fond:hsl(228,16%,95%); --carte:#fff; --encre:hsl(222,16%,17%);
+    --encre2:hsl(222,9%,42%); --trait:hsl(228,16%,88%);
+    --serif:'Iowan Old Style','Palatino Linotype',Palatino,Georgia,serif;
+    --degrade:linear-gradient(135deg,hsl(175,55%,70%),hsl(255,62%,75%),hsl(18,88%,74%));
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--fond);color:var(--encre);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    line-height:1.6;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+  .page{max-width:680px;margin:0 auto;padding:40px 22px 80px}
+  .orbe{width:64px;height:64px;border-radius:50%;background:var(--degrade);
+    box-shadow:0 10px 24px hsla(222,30%,12%,.14);margin-bottom:20px}
+  h1{font-family:var(--serif);font-style:italic;font-size:clamp(34px,7vw,46px);
+    margin:0 0 6px;letter-spacing:-.01em}
+  .sous{color:var(--encre2);font-size:17px;margin:0 0 34px}
+  h2{font-family:var(--serif);font-size:23px;margin:34px 0 6px;
+    display:flex;align-items:center;gap:12px}
+  .num{flex:none;width:30px;height:30px;border-radius:50%;background:var(--encre);
+    color:#fff;font-family:-apple-system,sans-serif;font-size:15px;font-weight:700;
+    display:flex;align-items:center;justify-content:center}
+  p{margin:8px 0}
+  .carte{background:var(--carte);border:1px solid var(--trait);border-radius:16px;
+    padding:20px 22px;margin:14px 0;box-shadow:0 1px 3px hsla(222,30%,12%,.05)}
+  .astuce{background:hsl(45,90%,95%);border:1px solid hsl(45,80%,82%);border-radius:14px;
+    padding:14px 18px;margin:14px 0;font-size:15px}
+  .lien{display:inline-block;font-weight:700;color:hsl(255,45%,52%);
+    word-break:break-all;text-decoration:none;border-bottom:2px solid hsl(255,62%,82%)}
+  strong{font-weight:700}
+  .fin{margin-top:40px;padding-top:22px;border-top:1px solid var(--trait);
+    color:var(--encre2);font-size:15px}
+  ul{margin:8px 0;padding-left:20px}
+  li{margin:5px 0}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="orbe"></div>
+  <h1>MonCoffre</h1>
+  <p class="sous">Ton cerveau visuel à toi. Garde tout ce que tu veux retenir — images, liens, idées, citations — et retrouve-le sur tous tes appareils. Tes données restent dans <strong>ton</strong> Google Drive : personne d'autre n'y a accès.</p>
+
+  <h2><span class="num">1</span> Installer l'app</h2>
+  <div class="carte">
+    <p>Ouvre ce lien sur ton appareil :</p>
+    <p><a class="lien" href="https://fredpixlab.github.io/monmind/">fredpixlab.github.io/monmind</a></p>
+    <p style="margin-top:14px"><strong>Sur iPhone / iPad :</strong> ouvre le lien dans <strong>Safari</strong>, touche le bouton <strong>Partager</strong> (le carré avec la flèche), puis <strong>« Sur l'écran d'accueil »</strong>. Une icône MonCoffre apparaît comme une vraie app.</p>
+    <p><strong>Sur Mac :</strong> ouvre le lien dans <strong>Chrome</strong>, puis clique l'icône <strong>« Installer »</strong> dans la barre d'adresse (ou menu ⋮ → « Installer MonCoffre… »).</p>
+  </div>
+
+  <h2><span class="num">2</span> Connecter ton Google Drive</h2>
+  <div class="carte">
+    <p>En bas à gauche de l'app, clique sur <strong>« Connecter Google Drive »</strong> et choisis <strong>ton</strong> compte Google.</p>
+    <div class="astuce">
+      ⚠️ Un écran <strong>« Google n'a pas validé cette application »</strong> va s'afficher. C'est <strong>normal</strong> : c'est l'application que Papa a fabriquée, pas une app du commerce. Clique <strong>« Paramètres avancés »</strong> puis <strong>« Accéder à MonCoffre »</strong>. Aucun risque — tu autorises juste l'app à ranger tes cartes dans ton propre Drive.
+    </div>
+    <p>Quand le petit point en bas à gauche devient <strong>vert</strong>, c'est synchronisé. 🎉</p>
+  </div>
+
+  <h2><span class="num">3</span> Ajouter des choses</h2>
+  <div class="carte">
+    <p>Le gros bouton <strong>+</strong> en bas à droite ouvre la fenêtre d'ajout. Tu peux :</p>
+    <ul>
+      <li>écrire une <strong>note</strong> ou une citation,</li>
+      <li>coller un <strong>lien</strong>,</li>
+      <li>ajouter une <strong>image</strong> (bouton « Photo / image », ou colle-la directement).</li>
+    </ul>
+    <p style="margin-top:10px">Astuce : pour garder une page web d'un seul clic, Papa peut t'installer la petite <strong>extension Chrome</strong> ou le <strong>raccourci iPhone</strong>.</p>
+  </div>
+
+  <h2><span class="num">4</span> Retrouver &amp; organiser</h2>
+  <div class="carte">
+    <ul>
+      <li><strong>Rechercher</strong> : la grande ligne en haut cherche dans tout ton coffre.</li>
+      <li><strong>Ouvrir une carte</strong> : clique dessus pour voir le détail, ajouter des <strong>tags</strong> (mots-clés) et une <strong>note</strong>. Les tags rendent la recherche plus facile.</li>
+      <li><strong>Espaces</strong> : regroupe des cartes par thème (Cours, Inspiration, Recettes…).</li>
+      <li><strong>Serendipity</strong> : te remontre tes cartes au hasard, pour retomber sur des choses oubliées.</li>
+    </ul>
+  </div>
+
+  <div class="fin">
+    <p><strong>C'est à toi, et à toi seule.</strong> Tes cartes sont rangées dans ton Google Drive, sous ton compte. Papa ne les voit pas, et personne d'autre non plus. Chacun son coffre. 🔒</p>
+    <p>Un souci ? Demande à Papa 😊</p>
+  </div>
+</div>
+</body>
+</html>
