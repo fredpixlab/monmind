@@ -164,6 +164,7 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif }) {
   const [videoSrc, setVideoSrc] = useState(null)     // vidéo complète (depuis Drive)
   const [chargeMedia, setChargeMedia] = useState(false)
   const [videoErreur, setVideoErreur] = useState(false)
+  const videoRef = useRef(null)
 
   // Image affichée : la complète si chargée, sinon la vignette / l'aperçu.
   const image = pleinSrc || src || (carte.type === 'lien' ? carte.apercu : null)
@@ -205,6 +206,19 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif }) {
     } catch (e) { console.error('[video]', e); setVideoErreur(true) }
     setChargeMedia(false)
   }
+
+  // Filet de sécurité : si la vidéo n'a même pas chargé ses métadonnées au
+  // bout de 12 s (lecteur bloqué sur certains navigateurs / fichiers), on
+  // bascule sur le repli « Ouvrir dans Drive / Télécharger » plutôt que de
+  // laisser tourner la roue indéfiniment.
+  useEffect(() => {
+    if (!videoSrc) return
+    const t = setTimeout(() => {
+      const v = videoRef.current
+      if (v && v.readyState < 1) { setVideoErreur(true); setVideoSrc(null) }
+    }, 12000)
+    return () => clearTimeout(t)
+  }, [videoSrc])
 
   // Couleur dominante de l'image → fond teinté du panneau.
   useEffect(() => {
@@ -304,12 +318,18 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif }) {
               <div className="dc-video-poster dc-video-echec">
                 {image && <img className="dc-image-nue" src={image} alt="" />}
                 <div className="dc-video-msg">
-                  <p>Cette vidéo ne peut pas être lue ici.</p>
-                  <button className="bouton-principal" onClick={telecharger}>Télécharger la vidéo</button>
+                  <p>Cette vidéo ne se lit pas directement ici.</p>
+                  <div className="dc-video-actions">
+                    {carte.driveMediaId && (
+                      <a className="bouton-principal" target="_blank" rel="noreferrer"
+                         href={`https://drive.google.com/file/d/${carte.driveMediaId}/view`}>▶ Ouvrir dans Drive</a>
+                    )}
+                    <button className="bouton-lien" onClick={telecharger}>Télécharger</button>
+                  </div>
                 </div>
               </div>
             ) : videoSrc ? (
-              <video className="dc-video" src={videoSrc} controls autoPlay playsInline
+              <video ref={videoRef} className="dc-video" src={videoSrc} controls autoPlay playsInline
                      onError={() => { setVideoSrc(null); setVideoErreur(true) }} />
             ) : (
               <div className="dc-video-poster" onClick={chargerVideo}>

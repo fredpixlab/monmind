@@ -183,7 +183,8 @@ body {
 .carte img { display: block; width: 100%; height: auto; }
 .carte .contenu { padding: 16px 18px 18px; }
 .carte .texte { margin: 0; font-size: 15px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
-.carte .note-serif { font-family: var(--serif); font-size: 19px; line-height: 1.42; color: var(--encre); }
+.carte .note-serif { font-family: var(--serif); font-size: 19px; line-height: 1.42; color: var(--encre);
+  display: -webkit-box; -webkit-line-clamp: 13; -webkit-box-orient: vertical; overflow: hidden; }
 .carte .lien-titre { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.32; overflow-wrap: anywhere; }
 .carte .lien-extrait {
   margin: 8px 0 0; font-size: 13px; color: var(--encre-2); line-height: 1.5;
@@ -225,6 +226,13 @@ body {
   align-items: center; justify-content: center; gap: 14px; text-align: center;
   color: #fff; padding: 20px; text-shadow: 0 1px 4px hsla(0,0%,0%,.6);
 }
+.dc-video-actions { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.dc-video-actions .bouton-principal { text-decoration: none; }
+.bouton-lien {
+  border: none; background: transparent; color: #fff; opacity: .85;
+  font-size: 14px; cursor: pointer; text-decoration: underline; padding: 4px;
+}
+.bouton-lien:hover { opacity: 1; }
 
 .carte .supprimer {
   position: absolute; top: 8px; right: 8px;
