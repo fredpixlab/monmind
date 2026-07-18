@@ -394,6 +394,7 @@ function serialiserMd(carte, nomImage) {
     v: 1, type: carte.type, titre: carte.titre || '', url: carte.url || '',
     apercu: carte.apercu || '', tags: carte.tags || [], note: carte.note || '',
     espaces: carte.espaces || [],   // appartenance aux espaces (pin manuel)
+    tag: carte.tag || '',           // pour un espace « intelligent » : son tag
     creeLe: carte.creeLe, modifieLe: carte.modifieLe,
     image: nomImage || '',
     // Médias « à la demande » (import mymind) : le fichier complet vit
@@ -582,6 +583,7 @@ async function recevoirCarte(id, dist) {
     note: meta.note || '',
     tags: meta.tags || [],
     espaces: meta.espaces || [],
+    tag: meta.tag || '',
     supprime: 0,
     creeLe: meta.creeLe,
     modifieLe: meta.modifieLe,

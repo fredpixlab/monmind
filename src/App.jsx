@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, ajouterCarte, supprimerCarte, majCarte, estUneUrl, creerEspace, supprimerEspace, basculerEpingle } from './db.js'
+import { db, ajouterCarte, supprimerCarte, majCarte, estUneUrl, creerEspace, supprimerEspace, basculerEpingle, membresEspace, semerSpacesMymind } from './db.js'
 import { construireIndex, rechercher } from './recherche.js'
 import { sync_configuree } from './config.js'
 import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion, telechargerMediaComplet, rafraichirJeton } from './drive.js'
@@ -818,6 +818,12 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Recrée UNE FOIS les 22 spaces « mymind » (listes intelligentes par tag),
+  // puis synchronise pour les propager aux autres appareils.
+  useEffect(() => {
+    semerSpacesMymind().then(n => { if (n) syncRef.current?.() }).catch(() => {})
+  }, [])
+
   // Données : sépare espaces / contenu, calcule les tags. Ce chargement
   // ne dépend PAS de la recherche — il se relance seulement quand la base
   // change (dexie-react-hooks suit la table `cartes`). Le filtrage et la
@@ -851,7 +857,10 @@ export default function App() {
   const cartes = useMemo(() => {
     if (!base) return undefined // encore en chargement → évite un flash « vide »
     let liste = contenu
-    if (espaceActif) liste = liste.filter(c => (c.espaces || []).includes(espaceActif))
+    if (espaceActif) {
+      const esp = espaces.find(e => e.id === espaceActif)
+      liste = esp ? membresEspace(esp, liste) : liste
+    }
     if (tagActif) liste = liste.filter(c => (c.tags || []).includes(tagActif))
     const ordre = rechercher(index, recherche)
     if (ordre) {
@@ -955,15 +964,15 @@ export default function App() {
               </div>
             )}
 
-            {tousTags.length > 0 && (
+            {espaces.length > 0 && (
               <div className="barre-tags">
-                {tousTags.map(t => (
+                {espaces.map(e => (
                   <button
-                    key={t}
-                    className={'pastille-tag' + (tagActif === t ? ' actif' : '')}
-                    onClick={() => setTagActif(tagActif === t ? null : t)}
+                    key={e.id}
+                    className={'pastille-tag' + (espaceActif === e.id ? ' actif' : '')}
+                    onClick={() => setEspaceActif(espaceActif === e.id ? null : e.id)}
                   >
-                    <span className="anneau" style={{ borderColor: couleurTag(t) }} />{t}
+                    <span className="anneau" style={{ borderColor: couleurTag(e.titre || 'e') }} />{e.titre}
                   </button>
                 ))}
               </div>
@@ -1037,7 +1046,7 @@ export default function App() {
                 <PileEspace
                   key={e.id}
                   espace={e}
-                  membres={contenu.filter(c => (c.espaces || []).includes(e.id))}
+                  membres={membresEspace(e, contenu)}
                   onOuvrir={ouvrirEspace}
                 />
               ))}

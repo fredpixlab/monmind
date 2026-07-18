@@ -51,6 +51,70 @@ export async function creerEspace(nom) {
   return ajouterCarte({ type: 'espace', titre: nom.trim() })
 }
 
+// --- Spaces « intelligents » (liste par tag, façon mymind) ----
+// Un espace peut porter un champ `tag` : son contenu est alors DYNAMIQUE
+// (toutes les cartes qui ont ce tag), au lieu d'un épinglage manuel.
+
+// Normalise un tag pour comparer sans se soucier de la casse ni de la
+// ponctuation : « B/A » == « b/a » == « ba », « Good vibes » == « good-vibes ».
+export function normTag(t) {
+  return (t || '').toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+// Les membres d'un espace : par tag s'il est « intelligent », sinon par
+// épinglage manuel (`espaces`). Fonctionne pour les deux sortes d'espaces.
+export function membresEspace(espace, cartes) {
+  if (!espace) return []
+  if (espace.tag) {
+    // `tag` peut contenir plusieurs alias séparés par des virgules
+    // (ex. « ai,ia ») → une carte matche si l'un d'eux correspond.
+    const cibles = espace.tag.split(',').map(normTag).filter(Boolean)
+    return cartes.filter(c => (c.tags || []).some(t => cibles.includes(normTag(t))))
+  }
+  return cartes.filter(c => (c.espaces || []).includes(espace.id))
+}
+
+// Les 22 spaces de mymind à recréer (le titre affiché EST le tag).
+export const SPACES_MYMIND = [
+  'IA', 'Fitness', 'Recipe', 'Tools', 'Madmen', 'Ads', 'Learn', 'B/A',
+  'Good vibes', 'Health', 'Web', 'Meme', 'Portrait', 'Prod', 'Movies',
+  'Ecology', 'Architecture', 'Vision', 'Travel', 'Youth', 'Quote', 'History'
+]
+
+// Id DÉTERMINISTE dérivé du NOM (pas du tag) → reste stable même si on
+// ajuste un alias plus tard, et évite les doublons entre appareils.
+function idEspaceTag(nom) {
+  return 'esp-tag-' + normTag(nom)
+}
+
+// Certains spaces mymind ont un nom FR/abrégé alors que les cartes sont
+// auto-taggées en anglais → alias explicite (plusieurs séparés par virgule).
+const ALIAS_TAG = { 'IA': 'ai,ia' }
+
+// Crée (une fois) les spaces-tags manquants. Id déterministe → aucun doublon
+// même si deux appareils sèment avant de se synchroniser (le même id fusionne
+// proprement via last-write-wins). Le drapeau `spacesMymindSemes` évite de
+// ressusciter un space que Fred aurait effacé.
+export async function semerSpacesMymind() {
+  if (await getReglage('spacesMymindSemes', false)) return 0
+  let n = 0
+  for (const nom of SPACES_MYMIND) {
+    const id = idEspaceTag(nom)
+    const tag = ALIAS_TAG[nom] || nom.trim().toLowerCase()
+    if (!(await db.cartes.get(id))) {
+      const maintenant = Date.now()
+      await db.cartes.put({
+        id, type: 'espace', titre: nom, tag,
+        tags: [], espaces: [], supprime: 0,
+        creeLe: maintenant, modifieLe: maintenant
+      })
+      n++
+    }
+  }
+  await setReglage('spacesMymindSemes', true)
+  return n
+}
+
 export async function renommerEspace(id, nom) {
   await majCarte(id, { titre: nom.trim() })
 }
