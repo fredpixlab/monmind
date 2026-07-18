@@ -409,6 +409,7 @@ function serialiserMd(carte, nomImage) {
     apercu: carte.apercu || '', tags: carte.tags || [], note: carte.note || '',
     espaces: carte.espaces || [],   // appartenance aux espaces (pin manuel)
     tag: carte.tag || '',           // pour un espace « intelligent » : son tag
+    texteImage: carte.texteImage || '', // OCR + mots-clés (Apple Vision), cherchable
     // État corbeille (propagé aux autres appareils sans effacer les fichiers).
     supprime: carte.supprime ? 1 : 0,
     supprimeLe: carte.supprimeLe || 0,
@@ -606,6 +607,7 @@ async function recevoirCarte(id, dist) {
     tags: meta.tags || [],
     espaces: meta.espaces || [],
     tag: meta.tag || '',
+    texteImage: meta.texteImage || '',
     supprime: meta.supprime ? 1 : 0,
     supprimeLe: meta.supprimeLe || 0,
     creeLe: meta.creeLe,

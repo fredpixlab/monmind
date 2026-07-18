@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, ajouterCarte, supprimerCarte, restaurerCarte, majCarte, estUneUrl, creerEspace, supprimerEspace, basculerEpingle, membresEspace, semerSpacesMymind, DUREE_CORBEILLE } from './db.js'
 import { construireIndex, rechercher } from './recherche.js'
-import { ajouterMediaDepuisFichier, estMediaSupporte } from './ajout-media.js'
+import { ajouterMediaDepuisFichier, estMediaSupporte, estFichierOcr, injecterOcr } from './ajout-media.js'
 import { sync_configuree } from './config.js'
 import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion, telechargerMediaComplet, rafraichirJeton, purgerCarte } from './drive.js'
 import { lancerImport } from './import-run.js'
@@ -949,7 +949,18 @@ export default function App() {
     e.preventDefault()
     dragCompteur.current = 0
     setSurvolFichier(false)
-    const medias = Array.from(e.dataTransfer?.files || []).filter(estMediaSupporte)
+    const fichiers = Array.from(e.dataTransfer?.files || [])
+    // Fichier de résultats OCR (Apple Vision) → on enrichit les cartes.
+    const ocr = fichiers.find(estFichierOcr)
+    if (ocr) {
+      setDepotEnCours(true)
+      const r = await injecterOcr(ocr)
+      setDepotEnCours(false)
+      sync.planifier()
+      toastDepot(r.erreur ? 'Fichier OCR illisible' : `${r.maj} carte(s) enrichie(s) par l'OCR`)
+      return
+    }
+    const medias = fichiers.filter(estMediaSupporte)
     if (!medias.length) { toastDepot('Formats acceptés : images, vidéos, PDF.'); return }
     setDepotEnCours(true)
     let ok = 0, besoinDrive = 0

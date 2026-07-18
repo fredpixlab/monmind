@@ -6,7 +6,7 @@
 // vers Drive (média « à la demande »), et on n'enregistre en local que la
 // carte + sa vignette. Résultat : identique à une carte importée.
 // ==================================================================
-import { nouvelId, ajouterCarte, mettreCarteImportee } from './db.js'
+import { db, nouvelId, ajouterCarte, majCarte, mettreCarteImportee } from './db.js'
 import { vignetteImage, vignetteVideo, vignettePdf, vignetteDefaut, estVideoExt } from './vignette.js'
 import { pousserCarteImportee, estDejaConnecte } from './drive.js'
 
@@ -35,6 +35,42 @@ function typeEtExt(file) {
 // Un fichier est-il un média qu'on sait ajouter ?
 export function estMediaSupporte(file) {
   return typeEtExt(file).type !== null
+}
+
+// --- Injection des résultats OCR (Apple Vision) -------------------
+// Le fichier .json (produit par l'outil Swift local) contient un tableau
+// [{ id, texte, labels[] }] où `id` = sourceId mymind (nom du fichier image
+// sans extension). On remplit le champ cherchable `texteImage` des cartes.
+
+export function estFichierOcr(file) {
+  return /\.json$/i.test(file.name || '') || (file.type || '').includes('json')
+}
+
+export async function injecterOcr(file) {
+  let data
+  try { data = JSON.parse(await file.text()) } catch { return { erreur: 'json' } }
+  if (!Array.isArray(data)) return { erreur: 'format' }
+
+  const parId = new Map()
+  for (const e of data) {
+    if (!e || !e.id) continue
+    const bouts = []
+    if (e.texte) bouts.push(String(e.texte))
+    if (Array.isArray(e.labels) && e.labels.length) bouts.push(e.labels.join(' '))
+    const ti = bouts.join(' ').replace(/\s+/g, ' ').trim()
+    if (ti) parId.set(e.id, ti)
+  }
+  if (!parId.size) return { maj: 0, total: 0 }
+
+  const toutes = await db.cartes.toArray()
+  let maj = 0
+  for (const c of toutes) {
+    if (c.sourceId && parId.has(c.sourceId)) {
+      const ti = parId.get(c.sourceId)
+      if (c.texteImage !== ti) { await majCarte(c.id, { texteImage: ti }); maj++ }
+    }
+  }
+  return { maj, total: parId.size }
 }
 
 // Fabrique la vignette adaptée au type (repli sur une tuile neutre).

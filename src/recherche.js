@@ -23,7 +23,10 @@ export function normaliser(terme) {
     .replace(new RegExp('[\u0300-\u036f]', 'g'), '') // supprime les diacritiques (accents)
 }
 
-const CHAMPS = ['texte', 'titre', 'url', 'note', 'tags']
+// `texteImage` = texte lu DANS l'image par Apple Vision (OCR) + mots-clés de
+// scène. Champ cherchable mais non affiché → on retrouve une carte par ce qui
+// est écrit sur l'image.
+const CHAMPS = ['texte', 'titre', 'url', 'note', 'tags', 'texteImage']
 
 // Construit un index MiniSearch à partir des cartes de contenu.
 // À rappeler seulement quand la liste des cartes change (via useMemo),
