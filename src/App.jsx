@@ -205,7 +205,10 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
   const videoRef = useRef(null)
 
   // Image affichée : la complète si chargée, sinon la vignette / l'aperçu.
-  const image = pleinSrc || src || (carte.type === 'lien' ? (carte.apercu || apercuLien(carte.url)) : null)
+  // `vignetteSrc` est recalculée depuis la carte → la navigation ← → affiche
+  // tout de suite la vignette de la carte suivante, même sans `src` fourni.
+  const vignetteSrc = useSrcImage(carte)
+  const image = pleinSrc || src || vignetteSrc || (carte.type === 'lien' ? (carte.apercu || apercuLien(carte.url)) : null)
   const aMediaDrive = !!carte.driveMediaId
 
   useEffect(() => {
@@ -1064,6 +1067,28 @@ export default function App() {
   useEffect(() => {
     if (espaceActif && !espaces.some(e => e.id === espaceActif)) setEspaceActif(null)
   }, [espaces, espaceActif])
+
+  // Navigation clavier dans la carte ouverte : ← / → passent à la carte
+  // précédente / suivante (dans l'ordre affiché), façon mymind. Ignoré quand
+  // on tape dans un champ (titre, note, tag) pour ne pas gêner l'édition.
+  useEffect(() => {
+    if (!ouverte) return
+    const nav = delta => {
+      if (!cartes || !cartes.length) return
+      const i = cartes.findIndex(c => c.id === ouverte.carte.id)
+      if (i < 0) return
+      const j = i + delta
+      if (j >= 0 && j < cartes.length) setOuverte({ carte: cartes[j] })
+    }
+    const surTouche = e => {
+      const t = e.target
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      if (e.key === 'ArrowRight') { e.preventDefault(); nav(1) }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); nav(-1) }
+    }
+    window.addEventListener('keydown', surTouche)
+    return () => window.removeEventListener('keydown', surTouche)
+  }, [ouverte, cartes])
 
   async function validerNouvelEspace() {
     const nom = nomEspace.trim()
