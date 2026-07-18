@@ -12,8 +12,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icons/apple-touch-icon.png'],
       manifest: {
-        name: 'MonMind',
-        short_name: 'MonMind',
+        name: 'MonCoffre',
+        short_name: 'MonCoffre',
         description: 'Ton second cerveau visuel — données chez toi.',
         lang: 'fr',
         start_url: '/monmind/',

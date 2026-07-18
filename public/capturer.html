@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>MonMind — Configurer la capture</title>
+<title>MonCoffre — Configurer la capture</title>
 <style>
   :root{
     --fond:hsl(40,23%,97%); --carte:hsl(40,30%,99.5%); --encre:hsl(30,12%,16%);
@@ -42,7 +42,7 @@
 </head>
 <body>
 <div class="wrap">
-  <div class="logo"><span class="pastille"></span>MonMind</div>
+  <div class="logo"><span class="pastille"></span>MonCoffre</div>
   <h1>Configurer la capture</h1>
   <p class="sous">Envoie n'importe quel lien vers ton mind, depuis ton Mac ou ton iPhone — sans ouvrir l'app.</p>
 
@@ -54,9 +54,9 @@
       <li><strong>Glisse ce bouton</strong> directement dans ta barre de favoris :</li>
     </ol>
     <p style="text-align:center;margin:22px 0 6px">
-      <a class="bm" id="bm" href="#">✦ Garder dans MonMind</a>
+      <a class="bm" id="bm" href="#">✦ Garder dans MonCoffre</a>
     </p>
-    <div class="astuce">Ensuite, sur n'importe quelle page web, clique ce bouton : une petite fenêtre confirme « Gardé dans MonMind ✓ » puis se referme toute seule. La carte apparaît dans ton app (avec l'aperçu de la page) et se synchronise sur tous tes appareils.</div>
+    <div class="astuce">Ensuite, sur n'importe quelle page web, clique ce bouton : une petite fenêtre confirme « Gardé dans MonCoffre ✓ » puis se referme toute seule. La carte apparaît dans ton app (avec l'aperçu de la page) et se synchronise sur tous tes appareils.</div>
   </div>
 
   <h2>Sur iPhone / iPad — le Raccourci « Partager »</h2>
@@ -70,18 +70,18 @@
         <code>https://fredpixlab.github.io/monmind/?c=1&type=lien&url=</code><br>
         puis, juste après, insère la variable <strong>« URL codée »</strong>.</li>
       <li>Ajoute l'action <strong>« Ouvrir les URL »</strong> et règle son entrée sur le <strong>Texte</strong> ci-dessus.</li>
-      <li>Nomme-le <strong>« Envoyer vers MonMind »</strong>.</li>
+      <li>Nomme-le <strong>« Envoyer vers MonCoffre »</strong>.</li>
     </ol>
-    <div class="astuce">À l'usage : dans Safari, bouton <strong>Partager</strong> → fais défiler → <strong>Envoyer vers MonMind</strong>. L'app s'ouvre, garde le lien et affiche la confirmation.<br><br>
+    <div class="astuce">À l'usage : dans Safari, bouton <strong>Partager</strong> → fais défiler → <strong>Envoyer vers MonCoffre</strong>. L'app s'ouvre, garde le lien et affiche la confirmation.<br><br>
     Pour les <strong>photos et vidéos</strong>, le partage direct n'est pas possible sur iOS ; le plus simple est le bouton <strong>+</strong> dans l'app, qui ouvre directement ta photothèque pour choisir ce que tu veux garder.</div>
   </div>
 
-  <p style="margin-top:40px"><a class="retour" href="./">← Retour à MonMind</a></p>
+  <p style="margin-top:40px"><a class="retour" href="./">← Retour à MonCoffre</a></p>
 </div>
 
 <script>
   // Le bookmarklet : lit l'URL, le titre, l'image d'aperçu (og:image) et
-  // le texte sélectionné de la page courante, puis ouvre MonMind en capture.
+  // le texte sélectionné de la page courante, puis ouvre MonCoffre en capture.
   var code = "javascript:(function(){" +
     "var d=document," +
     "t=encodeURIComponent(d.title)," +

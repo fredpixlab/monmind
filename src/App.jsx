@@ -6,7 +6,7 @@ import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, Besoin
 import { lancerImport } from './import-run.js'
 
 // ---------------------------------------------------------------
-// MonMind — interface façon mymind : accueil (recherche serif +
+// MonCoffre — interface façon mymind : accueil (recherche serif +
 // mosaïque), vue détail plein écran teintée, écran Espaces en piles.
 // Les cartes vivent dans IndexedDB (db.js) et se synchronisent avec
 // Google Drive (drive.js).
@@ -561,7 +561,7 @@ function CaptureExt() {
       {!carte && !erreur && <p className="ce-etat">Enregistrement…</p>}
       {carte && (
         <>
-          <h2>Gardé dans MonMind ✓</h2>
+          <h2>Gardé dans MonCoffre ✓</h2>
           <p className="ce-titre">{carte.titre || carte.url}</p>
         </>
       )}
@@ -687,7 +687,7 @@ function ImportMymind({ pret, brancher, fermer, onModif }) {
         <h2 className="import-titre">Importer depuis mymind</h2>
 
         {!supporte && (
-          <p className="import-note">Cet import a besoin de <strong>Chrome</strong> (ou Edge) sur ordinateur pour lire un dossier local. Ouvre MonMind dans Chrome pour importer.</p>
+          <p className="import-note">Cet import a besoin de <strong>Chrome</strong> (ou Edge) sur ordinateur pour lire un dossier local. Ouvre MonCoffre dans Chrome pour importer.</p>
         )}
 
         {supporte && !pret && !prog && (
@@ -699,7 +699,7 @@ function ImportMymind({ pret, brancher, fermer, onModif }) {
 
         {supporte && pret && !prog && !enCours && (
           <>
-            <p className="import-note">Choisis le dossier de ton export mymind (celui qui contient <code>cards.csv</code> et les fichiers). MonMind va lire le CSV, recréer tes cartes, et envoyer les médias dans ton Drive. <strong>Garde cet onglet ouvert</strong> pendant l'opération — ça peut durer un bon moment (plusieurs Go).</p>
+            <p className="import-note">Choisis le dossier de ton export mymind (celui qui contient <code>cards.csv</code> et les fichiers). MonCoffre va lire le CSV, recréer tes cartes, et envoyer les médias dans ton Drive. <strong>Garde cet onglet ouvert</strong> pendant l'opération — ça peut durer un bon moment (plusieurs Go).</p>
             <button className="bouton-principal" onClick={choisir}>Choisir le dossier de l'export…</button>
           </>
         )}
@@ -862,7 +862,7 @@ export default function App() {
       {/* ---- Rail gauche ---- */}
       <aside className="rail">
         <div className="rail-orbe" />
-        <div className="rail-marque">MonMind</div>
+        <div className="rail-marque">MonCoffre</div>
         <div className="rail-bas">
           <StatutSync etat={sync.etat} brancher={sync.brancher} lancer={sync.lancer} />
           <button className="rail-bouton" title="Importer depuis mymind" onClick={() => setImportOuvert(true)}>↓↓</button>
@@ -888,7 +888,7 @@ export default function App() {
               <input
                 className="hero-recherche"
                 type="search"
-                placeholder="Rechercher dans mon mind…"
+                placeholder="Rechercher dans mon coffre…"
                 value={recherche}
                 onChange={e => setRecherche(e.target.value)}
               />
@@ -1038,7 +1038,7 @@ export default function App() {
         <div className="toast-capture" onClick={fermerCapture} title="Fermer">
           <span className="coche">✓</span>
           <div>
-            <strong>Gardé dans MonMind</strong>
+            <strong>Gardé dans MonCoffre</strong>
             <p>{capture.titre || capture.url || capture.note || 'Nouvelle carte'}</p>
           </div>
         </div>
