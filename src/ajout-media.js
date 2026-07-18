@@ -63,14 +63,20 @@ export async function injecterOcr(file) {
   if (!parId.size) return { maj: 0, total: 0 }
 
   const toutes = await db.cartes.toArray()
-  let maj = 0
+  const maintenant = Date.now()
+  const updates = []
   for (const c of toutes) {
     if (c.sourceId && parId.has(c.sourceId)) {
       const ti = parId.get(c.sourceId)
-      if (c.texteImage !== ti) { await majCarte(c.id, { texteImage: ti }); maj++ }
+      if (c.texteImage !== ti) {
+        updates.push({ key: c.id, changes: { texteImage: ti, modifieLe: maintenant } })
+      }
     }
   }
-  return { maj, total: parId.size }
+  // Mise à jour GROUPÉE (une seule opération → un seul re-rendu / une seule
+  // reconstruction de l'index, au lieu de ~1000 → sinon l'app se fige).
+  if (updates.length) await db.cartes.bulkUpdate(updates)
+  return { maj: updates.length, total: parId.size }
 }
 
 // Fabrique la vignette adaptée au type (repli sur une tuile neutre).
