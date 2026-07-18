@@ -1,6 +1,7 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, ajouterCarte, supprimerCarte, majCarte, estUneUrl, creerEspace, supprimerEspace, basculerEpingle } from './db.js'
+import { construireIndex, rechercher } from './recherche.js'
 import { sync_configuree } from './config.js'
 import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion, telechargerMediaComplet, rafraichirJeton } from './drive.js'
 import { lancerImport } from './import-run.js'
@@ -817,8 +818,11 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Données : sépare espaces / contenu, calcule les tags, filtre.
-  const donnees = useLiveQuery(async () => {
+  // Données : sépare espaces / contenu, calcule les tags. Ce chargement
+  // ne dépend PAS de la recherche — il se relance seulement quand la base
+  // change (dexie-react-hooks suit la table `cartes`). Le filtrage et la
+  // recherche plein-texte sont faits plus bas, en mémoire.
+  const base = useLiveQuery(async () => {
     const toutes = await db.cartes.orderBy('creeLe').reverse().toArray()
     const visibles = toutes.filter(c => !c.supprime)
     const espaces = visibles
@@ -830,24 +834,34 @@ export default function App() {
     contenu.forEach(c => (c.tags || []).forEach(t => { compte[t] = (compte[t] || 0) + 1 }))
     const tags = Object.entries(compte).sort((a, b) => b[1] - a[1]).map(([t]) => t)
 
+    return { tags, espaces, contenu }
+  }, [])
+
+  const tousTags = base?.tags || []
+  const espaces = base?.espaces || []
+  const contenu = useMemo(() => base?.contenu || [], [base])
+
+  // Index plein-texte MiniSearch : reconstruit UNIQUEMENT quand la liste
+  // des cartes change (pas à chaque frappe). ~2300 cartes → construction
+  // quasi instantanée, gardée en mémoire ensuite.
+  const index = useMemo(() => construireIndex(contenu), [contenu])
+
+  // Liste affichée : filtres espace/tag, puis recherche plein-texte classée
+  // par pertinence. Recalculée à chaque frappe, mais sans reconstruire l'index.
+  const cartes = useMemo(() => {
+    if (!base) return undefined // encore en chargement → évite un flash « vide »
     let liste = contenu
     if (espaceActif) liste = liste.filter(c => (c.espaces || []).includes(espaceActif))
     if (tagActif) liste = liste.filter(c => (c.tags || []).includes(tagActif))
-    const q = recherche.trim().toLowerCase()
-    if (q) liste = liste.filter(c =>
-      (c.texte || '').toLowerCase().includes(q) ||
-      (c.titre || '').toLowerCase().includes(q) ||
-      (c.url || '').toLowerCase().includes(q) ||
-      (c.note || '').toLowerCase().includes(q) ||
-      (c.tags || []).some(t => t.includes(q))
-    )
-    return { liste, tags, espaces, contenu }
-  }, [recherche, tagActif, espaceActif])
-
-  const cartes = donnees?.liste
-  const tousTags = donnees?.tags || []
-  const espaces = donnees?.espaces || []
-  const contenu = donnees?.contenu || []
+    const ordre = rechercher(index, recherche)
+    if (ordre) {
+      const rang = new Map(ordre.map((id, i) => [id, i]))
+      liste = liste
+        .filter(c => rang.has(c.id))
+        .sort((a, b) => rang.get(a.id) - rang.get(b.id))
+    }
+    return liste
+  }, [base, contenu, index, recherche, tagActif, espaceActif])
 
   useEffect(() => {
     if (espaceActif && !espaces.some(e => e.id === espaceActif)) setEspaceActif(null)
