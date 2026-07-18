@@ -66,10 +66,15 @@ export function normTag(t) {
 export function membresEspace(espace, cartes) {
   if (!espace) return []
   if (espace.tag) {
-    // `tag` peut contenir plusieurs alias séparés par des virgules
-    // (ex. « ai,ia ») → une carte matche si l'un d'eux correspond.
+    // Space « intelligent » : une carte en fait partie si elle porte le tag
+    // (un des alias, séparés par des virgules, ex. « ai,ia ») OU si elle y a
+    // été épinglée à la main (panneau de détail). Union des deux → l'épinglage
+    // manuel fonctionne aussi sur les spaces par tag.
     const cibles = espace.tag.split(',').map(normTag).filter(Boolean)
-    return cartes.filter(c => (c.tags || []).some(t => cibles.includes(normTag(t))))
+    return cartes.filter(c =>
+      (c.espaces || []).includes(espace.id) ||
+      (c.tags || []).some(t => cibles.includes(normTag(t)))
+    )
   }
   return cartes.filter(c => (c.espaces || []).includes(espace.id))
 }
