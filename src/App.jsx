@@ -960,7 +960,8 @@ export default function App() {
       catch (err) { console.error('[ocr-inject]', err); r = { erreur: 'exception' } }
       finally { setDepotEnCours(false) }
       sync.planifier()
-      toastDepot(r?.erreur ? 'Fichier OCR illisible' : `${r.maj} carte(s) enrichie(s) par l'OCR`)
+      toastDepot(r?.erreur ? 'Fichier OCR illisible'
+        : `OCR v2 — ${r.maj} enrichies · ${r.matchees}/${r.scannees} reconnues`)
       return
     }
     const medias = fichiers.filter(estMediaSupporte)

@@ -65,6 +65,7 @@ export async function injecterOcr(file) {
   const toutes = await db.cartes.toArray()
   const maintenant = Date.now()
   const updates = []
+  let matchees = 0
   for (const c of toutes) {
     // On matche l'id OCR (= sourceId mymind) contre plusieurs candidats de la
     // carte : son `sourceId` s'il est là, SINON son id sans le préfixe « mm- »
@@ -73,6 +74,7 @@ export async function injecterOcr(file) {
       : (c.id && parId.has(String(c.id).replace(/^mm-/, ''))) ? String(c.id).replace(/^mm-/, '')
       : null
     if (cle) {
+      matchees++
       const ti = parId.get(cle)
       if (c.texteImage !== ti) {
         updates.push({ key: c.id, changes: { texteImage: ti, modifieLe: maintenant } })
@@ -82,7 +84,7 @@ export async function injecterOcr(file) {
   // Mise à jour GROUPÉE (une seule opération → un seul re-rendu / une seule
   // reconstruction de l'index, au lieu de ~1000 → sinon l'app se fige).
   if (updates.length) await db.cartes.bulkUpdate(updates)
-  return { maj: updates.length, total: parId.size }
+  return { maj: updates.length, total: parId.size, scannees: toutes.length, matchees }
 }
 
 // Fabrique la vignette adaptée au type (repli sur une tuile neutre).
