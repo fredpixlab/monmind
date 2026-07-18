@@ -66,8 +66,14 @@ export async function injecterOcr(file) {
   const maintenant = Date.now()
   const updates = []
   for (const c of toutes) {
-    if (c.sourceId && parId.has(c.sourceId)) {
-      const ti = parId.get(c.sourceId)
+    // On matche l'id OCR (= sourceId mymind) contre plusieurs candidats de la
+    // carte : son `sourceId` s'il est là, SINON son id sans le préfixe « mm- »
+    // (les cartes importées ont un id de la forme « mm-<sourceId> »).
+    const cle = (c.sourceId && parId.has(c.sourceId)) ? c.sourceId
+      : (c.id && parId.has(String(c.id).replace(/^mm-/, ''))) ? String(c.id).replace(/^mm-/, '')
+      : null
+    if (cle) {
+      const ti = parId.get(cle)
       if (c.texteImage !== ti) {
         updates.push({ key: c.id, changes: { texteImage: ti, modifieLe: maintenant } })
       }
