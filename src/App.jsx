@@ -163,6 +163,7 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif }) {
   const [pleinSrc, setPleinSrc] = useState(null)     // image complète (depuis Drive)
   const [videoSrc, setVideoSrc] = useState(null)     // vidéo complète (depuis Drive)
   const [chargeMedia, setChargeMedia] = useState(false)
+  const [videoErreur, setVideoErreur] = useState(false)
 
   // Image affichée : la complète si chargée, sinon la vignette / l'aperçu.
   const image = pleinSrc || src || (carte.type === 'lien' ? carte.apercu : null)
@@ -192,8 +193,16 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif }) {
     setChargeMedia(true)
     try {
       const b = carte.driveMediaId ? await telechargerMediaComplet(carte.driveMediaId) : null
-      if (b) setVideoSrc(URL.createObjectURL(b))
-    } catch (e) { console.error('[video]', e) }
+      if (b) {
+        // Ces vidéos sont renvoyées par Drive en « video/quicktime » (conteneur
+        // .mov), un type que Chrome REFUSE de lire — alors que le codec interne
+        // est du H.264/MP4, parfaitement lisible. On ré-étiquette donc le blob
+        // en « video/mp4 » : le démuxeur de Chrome accepte alors le fichier.
+        const type = (!b.type || /quicktime|octet-stream/.test(b.type)) ? 'video/mp4' : b.type
+        const blob = type === b.type ? b : b.slice(0, b.size, type)
+        setVideoSrc(URL.createObjectURL(blob))
+      }
+    } catch (e) { console.error('[video]', e); setVideoErreur(true) }
     setChargeMedia(false)
   }
 
@@ -291,8 +300,17 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif }) {
             <img className="dc-image-nue" src={image} alt={carte.texte || 'Image'} />
           )}
           {carte.type === 'video' && (
-            videoSrc ? (
-              <video className="dc-video" src={videoSrc} controls autoPlay playsInline />
+            videoErreur ? (
+              <div className="dc-video-poster dc-video-echec">
+                {image && <img className="dc-image-nue" src={image} alt="" />}
+                <div className="dc-video-msg">
+                  <p>Cette vidéo ne peut pas être lue ici.</p>
+                  <button className="bouton-principal" onClick={telecharger}>Télécharger la vidéo</button>
+                </div>
+              </div>
+            ) : videoSrc ? (
+              <video className="dc-video" src={videoSrc} controls autoPlay playsInline
+                     onError={() => { setVideoSrc(null); setVideoErreur(true) }} />
             ) : (
               <div className="dc-video-poster" onClick={chargerVideo}>
                 {image && <img className="dc-image-nue" src={image} alt="" />}

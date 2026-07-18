@@ -218,6 +218,13 @@ body {
 /* Vidéo dans la vue détail */
 .dc-video { max-width: 100%; max-height: 92vh; border-radius: 14px; box-shadow: 0 24px 60px hsla(0,0%,0%,.45); background: #000; }
 .dc-video-poster { position: relative; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.dc-video-echec { cursor: default; }
+.dc-video-echec .dc-image-nue { filter: brightness(.5); }
+.dc-video-msg {
+  position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 14px; text-align: center;
+  color: #fff; padding: 20px; text-shadow: 0 1px 4px hsla(0,0%,0%,.6);
+}
 
 .carte .supprimer {
   position: absolute; top: 8px; right: 8px;
