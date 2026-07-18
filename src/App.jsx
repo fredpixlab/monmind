@@ -1088,7 +1088,7 @@ export default function App() {
       <div className="zone">
         <nav className="nav-haut">
           <button className={'nav-lien' + (vue === 'tout' ? ' actif' : '')}
-                  onClick={() => setVue('tout')}>Tout</button>
+                  onClick={() => { setVue('tout'); setEspaceActif(null); setTagActif(null); setRecherche('') }}>Tout</button>
           <button className={'nav-lien' + (vue === 'espaces' ? ' actif' : '')}
                   onClick={() => setVue('espaces')}>Espaces</button>
           <button className={'nav-lien' + (vue === 'serendipity' ? ' actif' : '')}
