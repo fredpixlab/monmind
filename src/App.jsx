@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, ajouterCarte, supprimerCarte, restaurerCarte, majCarte, estUneUrl, creerEspace, supprimerEspace, basculerEpingle, membresEspace, semerSpacesMymind, DUREE_CORBEILLE } from './db.js'
 import { construireIndex, rechercher } from './recherche.js'
-import { ajouterMediaDepuisFichier, estMediaSupporte, estFichierOcr, injecterOcr } from './ajout-media.js'
+import { ajouterMediaDepuisFichier, estMediaSupporte, estFichierOcr, injecterOcr, ocrEnFond } from './ajout-media.js'
 import { sync_configuree } from './config.js'
 import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion, telechargerMediaComplet, rafraichirJeton, purgerCarte } from './drive.js'
 import { lancerImport } from './import-run.js'
@@ -515,7 +515,8 @@ function Composeur({ fermer, onAjout }) {
     const propre = texte.trim()
     if (!propre && !image) return
     if (image) {
-      await ajouterCarte({ type: 'image', image, texte: propre })
+      const c = await ajouterCarte({ type: 'image', image, texte: propre })
+      ocrEnFond(c.id, image)
     } else if (estUneUrl(propre)) {
       await ajouterCarte({ type: 'lien', url: propre, titre: '' })
     } else {

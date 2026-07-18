@@ -6,9 +6,9 @@
 // vers Drive (média « à la demande »), et on n'enregistre en local que la
 // carte + sa vignette. Résultat : identique à une carte importée.
 // ==================================================================
-import { db, nouvelId, ajouterCarte, majCarte, mettreCarteImportee } from './db.js'
+import { db, nouvelId, majCarte, mettreCarteImportee } from './db.js'
 import { vignetteImage, vignetteVideo, vignettePdf, vignetteDefaut, estVideoExt } from './vignette.js'
-import { pousserCarteImportee, estDejaConnecte } from './drive.js'
+import { pousserCarteImportee, estDejaConnecte, synchroniser } from './drive.js'
 
 const EXT_IMAGE = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'avif', 'bmp']
 
@@ -84,6 +84,25 @@ async function fabriquerVignette(file, type) {
   }
 }
 
+// OCR « au fil de l'eau » dans le NAVIGATEUR (Tesseract, chargé à la demande) :
+// dès qu'une image est ajoutée, on lit le texte qu'elle contient (FR + EN) en
+// tâche de fond et on le range dans le champ cherchable `texteImage`. Marche
+// partout, y compris iPhone/iPad, 100 % en local. (Qualité un cran sous le
+// moteur Apple → la passe Apple mensuelle affine les ajouts récents.)
+export async function ocrEnFond(cardId, file) {
+  try {
+    const { default: Tesseract } = await import('tesseract.js')
+    const { data } = await Tesseract.recognize(file, 'fra+eng')
+    const ti = (data?.text || '').replace(/\s+/g, ' ').trim()
+    if (ti) {
+      await majCarte(cardId, { texteImage: ti })
+      try { await synchroniser() } catch { /* la sync périodique rattrapera */ }
+    }
+  } catch (e) {
+    console.error('[ocr-navigateur]', e)
+  }
+}
+
 // Ajoute un fichier déposé. Renvoie 'ok' | 'ok-local' | 'ignore' | 'besoin-drive'.
 export async function ajouterMediaDepuisFichier(file) {
   const { type, ext } = typeEtExt(file)
@@ -101,7 +120,9 @@ export async function ajouterMediaDepuisFichier(file) {
   // ensuite ; vidéo/PDF ont besoin de Drive tout de suite pour le média).
   const enLocal = async () => {
     if (type === 'image') {
-      await ajouterCarte({ type: 'image', titre: base.titre, image: file, mediaExt: ext })
+      // Id maîtrisé (put) pour pouvoir remplir texteImage après l'OCR.
+      await mettreCarteImportee({ ...base, distant: 0, image: file, supprime: 0 })
+      ocrEnFond(base.id, file)
       return 'ok-local'
     }
     return 'besoin-drive'
@@ -113,6 +134,7 @@ export async function ajouterMediaDepuisFichier(file) {
     const cImport = { ...base, distant: true, vignetteNom: `${base.id}.thumb.jpg` }
     const res = await pousserCarteImportee(cImport, file, vign)
     await mettreCarteImportee({ ...cImport, distant: 1, vignette: vign, image: null, ...res })
+    if (type === 'image') ocrEnFond(base.id, file)
     return 'ok'
   } catch (e) {
     console.error('[ajout-media]', e)

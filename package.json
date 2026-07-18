@@ -12,7 +12,8 @@
     "dexie-react-hooks": "^4.4.0",
     "minisearch": "^7.2.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^6.0.3",
