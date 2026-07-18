@@ -707,3 +707,15 @@ body {
 .depot-carte p { margin: 0; font-size: 13px; color: var(--encre-2); letter-spacing: .03em; }
 .depot-orbe { width: 54px; height: 54px; border-radius: 50%; background: var(--degrade); box-shadow: var(--ombre-sm); }
 .depot-toast { background: hsl(150, 26%, 26%); }
+
+/* ---------- Titre éditable (panneau détail) ---------- */
+.dp-titre-champ {
+  width: 100%; border: none; background: transparent; resize: none; overflow: hidden;
+  font-family: inherit; font-size: 21px; font-weight: 600; line-height: 1.25;
+  color: var(--encre); margin: 0 0 4px; padding: 3px 6px;
+  border-radius: 7px; outline: none; word-break: break-word; cursor: text;
+  field-sizing: content; min-height: 1.4em; transition: background .15s;
+}
+.dp-titre-champ::placeholder { color: var(--encre-3); font-weight: 600; }
+.dp-titre-champ:hover { background: hsla(222, 20%, 50%, .06); }
+.dp-titre-champ:focus { background: hsla(222, 20%, 50%, .10); }

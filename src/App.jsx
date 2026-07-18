@@ -122,9 +122,23 @@ function repartirColonnes(items, n) {
   return cols
 }
 
+// Miniature d'aperçu d'un lien construite CÔTÉ CLIENT, sans requête réseau ni
+// service tiers (respecte la vie privée). YouTube pour l'instant : on extrait
+// l'id de la vidéo et on pointe sa vignette officielle. (Les autres sites
+// nécessiteraient de crawler leur balise og:image — impossible sans serveur.)
+function idYouTube(url) {
+  const m = (url || '').match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([\w-]{11})/)
+  return m ? m[1] : null
+}
+function apercuLien(url) {
+  const yt = idYouTube(url)
+  return yt ? `https://i.ytimg.com/vi/${yt}/hqdefault.jpg` : null
+}
+
 // --- Une carte dans la mosaïque ----------------------------------
 function Carte({ carte, onOuvrir, onModif, onSupprimer }) {
   const src = useSrcImage(carte)
+  const apercu = carte.type === 'lien' ? (carte.apercu || apercuLien(carte.url)) : null
 
   // La « légende » sous la carte (façon mymind) : le texte d'une image/vidéo,
   // ou le domaine d'un lien.
@@ -139,9 +153,9 @@ function Carte({ carte, onOuvrir, onModif, onSupprimer }) {
   return (
     <div className="brique">
       <article className="carte cliquable" onClick={() => onOuvrir(carte, src)}>
-        {carte.type === 'lien' && !carte.apercu && <div className="accent-lien" />}
-        {carte.type === 'lien' && carte.apercu && (
-          <img className="apercu-lien" src={carte.apercu} alt="" loading="lazy"
+        {carte.type === 'lien' && !apercu && <div className="accent-lien" />}
+        {carte.type === 'lien' && apercu && (
+          <img className="apercu-lien" src={apercu} alt="" loading="lazy"
                onError={e => { e.currentTarget.style.display = 'none' }} />
         )}
         {src && carte.type === 'video' && (
@@ -180,6 +194,7 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
   const [mesEspaces, setMesEspaces] = useState(carte.espaces || [])
   const champNote = carte.type === 'note' ? 'texte' : 'note'
   const [note, setNote] = useState(carte[champNote] || '')
+  const [titreEdit, setTitreEdit] = useState(carte.titre || '')
   const [teinte, setTeinte] = useState(null)
   const [nouvelEspaceOuvert, setNouvelEspaceOuvert] = useState(false)
   const [nomNouvelEspace, setNomNouvelEspace] = useState('')
@@ -190,7 +205,7 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
   const videoRef = useRef(null)
 
   // Image affichée : la complète si chargée, sinon la vignette / l'aperçu.
-  const image = pleinSrc || src || (carte.type === 'lien' ? carte.apercu : null)
+  const image = pleinSrc || src || (carte.type === 'lien' ? (carte.apercu || apercuLien(carte.url)) : null)
   const aMediaDrive = !!carte.driveMediaId
 
   useEffect(() => {
@@ -266,6 +281,10 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
   function sauverNote() {
     if (note !== (carte[champNote] || '')) majCarte(carte.id, { [champNote]: note }).then(onModif)
   }
+  function sauverTitre() {
+    const t = titreEdit.trim()
+    if (t !== (carte.titre || '')) majCarte(carte.id, { titre: t }).then(onModif)
+  }
   function basculerEspace(id) {
     const epingler = !mesEspaces.includes(id)
     basculerEpingle({ ...carte, espaces: mesEspaces }, id, epingler)
@@ -311,8 +330,8 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
   const fond = teinte
     ? `rgb(${teinte[0]}, ${teinte[1]}, ${teinte[2]})`
     : 'hsl(222, 22%, 22%)'
-  const titre = carte.titre || (carte.type === 'note' ? 'Note' : carte.type === 'image' ? 'Image'
-    : carte.type === 'video' ? 'Vidéo' : domaineDe(carte.url))
+  const titrePlaceholder = carte.type === 'note' ? 'Note' : carte.type === 'image' ? 'Image'
+    : carte.type === 'video' ? 'Vidéo' : carte.type === 'pdf' ? 'PDF' : (domaineDe(carte.url) || 'Sans titre')
 
   return (
     <div className="detail-voile" style={{ background: fond }} onClick={fermer}>
@@ -387,7 +406,13 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
         {/* Colonne droite : le panneau d'infos */}
         <aside className="detail-panneau">
           <div className="dp-haut">
-            <h2 className="dp-titre">{titre}</h2>
+            <textarea
+              className="dp-titre dp-titre-champ" rows={1} value={titreEdit}
+              placeholder={titrePlaceholder}
+              onChange={e => setTitreEdit(e.target.value)}
+              onBlur={sauverTitre}
+              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); e.currentTarget.blur() } }}
+            />
             <p className="dp-date">{dateRelative(carte.creeLe)}</p>
 
             <div className="dp-label">Tags</div>
