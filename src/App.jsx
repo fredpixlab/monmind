@@ -102,6 +102,25 @@ function useSrcImage(carte) {
   return src
 }
 
+// Nombre de colonnes de la mosaïque selon la largeur de l'écran.
+function calcColonnes(w) { return w < 560 ? 2 : w < 900 ? 3 : 4 }
+function useNbColonnes() {
+  const [n, setN] = useState(() => calcColonnes(typeof window !== 'undefined' ? window.innerWidth : 1200))
+  useEffect(() => {
+    const on = () => setN(calcColonnes(window.innerWidth))
+    window.addEventListener('resize', on)
+    return () => window.removeEventListener('resize', on)
+  }, [])
+  return n
+}
+// Répartit les cartes en `n` colonnes en round-robin (carte 0→col0, 1→col1…)
+// pour que l'ordre chronologique (plus récentes d'abord) se lise ligne par ligne.
+function repartirColonnes(items, n) {
+  const cols = Array.from({ length: n }, () => [])
+  items.forEach((it, i) => cols[i % n].push(it))
+  return cols
+}
+
 // --- Une carte dans la mosaïque ----------------------------------
 function Carte({ carte, onOuvrir, onModif, onSupprimer }) {
   const src = useSrcImage(carte)
@@ -818,6 +837,7 @@ export default function App() {
   const [serenIdx, setSerenIdx] = useState(0)
   const [annulSuppr, setAnnulSuppr] = useState(null) // carte récemment supprimée (bandeau « Annuler »)
   const timerAnnul = useRef(null)
+  const nbCol = useNbColonnes()
   const sync = useSync()
 
   // Suppression avec fenêtre d'annulation : la carte part en corbeille
@@ -1068,12 +1088,16 @@ export default function App() {
               <div className="vide"><h2>Rien trouvé.</h2><p>Essaie un autre mot ou un autre tag.</p></div>
             )}
 
-            <main className="grille">
-              {cartes?.map(c => (
-                <Carte key={c.id} carte={c}
-                       onOuvrir={(carte, src) => setOuverte({ carte, src })}
-                       onModif={sync.planifier}
-                       onSupprimer={demanderSuppression} />
+            <main className="grille-cols">
+              {repartirColonnes(cartes || [], nbCol).map((col, i) => (
+                <div className="grille-col" key={i}>
+                  {col.map(c => (
+                    <Carte key={c.id} carte={c}
+                           onOuvrir={(carte, src) => setOuverte({ carte, src })}
+                           onModif={sync.planifier}
+                           onSupprimer={demanderSuppression} />
+                  ))}
+                </div>
               ))}
             </main>
           </>

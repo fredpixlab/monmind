@@ -167,6 +167,13 @@ body {
 }
 .brique { break-inside: avoid; margin-bottom: 26px; }
 
+/* Mosaïque CHRONOLOGIQUE : colonnes flex remplies en round-robin (carte 0→col0,
+   1→col1…) pour que la lecture gauche→droite, haut→bas suive l'ordre des dates
+   (les plus récentes en haut). min-width:0 empêche tout débordement de texte. */
+.grille-cols { display: flex; gap: 24px; align-items: flex-start; padding: 4px 8px; }
+.grille-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 26px; }
+.grille-col .brique { margin-bottom: 0; }
+
 .carte {
   position: relative;
   background: var(--carte);
@@ -428,7 +435,7 @@ body {
   box-shadow: 0 24px 60px hsla(0,0%,0%,.45);
 }
 .dc-carte {
-  width: 100%; max-height: 92vh; overflow-y: auto;
+  width: 100%; min-width: 0; max-height: 92vh; overflow-y: auto;
   background: var(--carte); border-radius: 16px; box-shadow: 0 24px 60px hsla(0,0%,0%,.4);
   padding: 34px 38px;
 }
@@ -437,9 +444,10 @@ body {
   color: hsl(255, 45%, 55%); text-decoration: none; }
 .dc-source:hover { text-decoration: underline; }
 .dc-image { display: block; width: 100%; border-radius: 12px; margin: 4px 0 22px; box-shadow: var(--ombre-sm); }
-.dc-texte { font-size: 16.5px; line-height: 1.7; color: var(--encre); white-space: pre-wrap; overflow-wrap: anywhere; }
-.dc-note { display: flex; align-items: center; }
-.dc-note-texte { font-family: var(--serif); font-size: 24px; line-height: 1.5; margin: 0; white-space: pre-wrap; }
+.dc-texte { font-size: 16.5px; line-height: 1.7; color: var(--encre); white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+.dc-note { display: flex; align-items: center; min-width: 0; }
+.dc-note-texte { font-family: var(--serif); font-size: 24px; line-height: 1.5; margin: 0; white-space: pre-wrap;
+  overflow-wrap: anywhere; word-break: break-word; min-width: 0; max-width: 100%; }
 
 .detail-panneau {
   flex: none; width: 360px; max-width: 42vw; max-height: 92vh;
@@ -626,6 +634,8 @@ body {
   .rail-bas { margin: 0 0 0 auto; flex-direction: row; }
   .zone { margin-left: 0; padding: 0 18px 100px; }
   .grille { columns: 2 150px; column-gap: 14px; }
+  .grille-cols { gap: 14px; padding: 4px 0; }
+  .grille-col { gap: 16px; }
   .brique { margin-bottom: 16px; }
   .nav-haut { padding: 14px 4px 6px; gap: 18px; }
   .hero-recherche { font-size: 30px; }
