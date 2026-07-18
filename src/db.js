@@ -138,7 +138,23 @@ export async function basculerEpingle(carte, espaceId, epingler) {
 // appareils via Drive. Le vrai effacement des fichiers Drive est fait
 // par le moteur de sync.
 export async function supprimerCarte(id) {
-  await db.cartes.update(id, { supprime: 1, modifieLe: Date.now() })
+  const t = Date.now()
+  await db.cartes.update(id, { supprime: 1, supprimeLe: t, modifieLe: t })
+}
+
+// Durée de rétention en corbeille avant effacement définitif.
+export const DUREE_CORBEILLE = 30 * 24 * 60 * 60 * 1000 // 30 jours
+
+// Restaure une carte de la corbeille (annulation / bouton « Restaurer »).
+export async function restaurerCarte(id) {
+  await db.cartes.update(id, { supprime: 0, supprimeLe: 0, modifieLe: Date.now() })
+}
+
+// Une carte est « échue » quand elle est en corbeille depuis plus de 30 jours
+// → le moteur de sync l'efface alors pour de bon (fichiers Drive + tombstone).
+export function estEchu(carte) {
+  return !!(carte && carte.supprime && carte.supprimeLe &&
+    (Date.now() - carte.supprimeLe >= DUREE_CORBEILLE))
 }
 
 // Modifie une carte (tags, note, titre…) et met à jour sa date pour que

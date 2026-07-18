@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, ajouterCarte, supprimerCarte, majCarte, estUneUrl, creerEspace, supprimerEspace, basculerEpingle, membresEspace, semerSpacesMymind } from './db.js'
+import { db, ajouterCarte, supprimerCarte, restaurerCarte, majCarte, estUneUrl, creerEspace, supprimerEspace, basculerEpingle, membresEspace, semerSpacesMymind, DUREE_CORBEILLE } from './db.js'
 import { construireIndex, rechercher } from './recherche.js'
 import { sync_configuree } from './config.js'
-import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion, telechargerMediaComplet, rafraichirJeton } from './drive.js'
+import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion, telechargerMediaComplet, rafraichirJeton, purgerCarte } from './drive.js'
 import { lancerImport } from './import-run.js'
 
 // ---------------------------------------------------------------
@@ -103,7 +103,7 @@ function useSrcImage(carte) {
 }
 
 // --- Une carte dans la mosaïque ----------------------------------
-function Carte({ carte, onOuvrir, onModif }) {
+function Carte({ carte, onOuvrir, onModif, onSupprimer }) {
   const src = useSrcImage(carte)
 
   // La « légende » sous la carte (façon mymind) : le texte d'une image/vidéo,
@@ -142,7 +142,7 @@ function Carte({ carte, onOuvrir, onModif }) {
         <button
           className="supprimer"
           title="Supprimer"
-          onClick={e => { e.stopPropagation(); supprimerCarte(carte.id).then(onModif) }}
+          onClick={e => { e.stopPropagation(); onSupprimer ? onSupprimer(carte) : supprimerCarte(carte.id).then(onModif) }}
         >×</button>
       </article>
       {legende && <p className="legende">{legende}</p>}
@@ -151,7 +151,7 @@ function Carte({ carte, onOuvrir, onModif }) {
 }
 
 // --- Vue DÉTAIL plein écran (façon mymind) -----------------------
-function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif }) {
+function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSupprimer }) {
   const [tags, setTags] = useState(carte.tags || [])
   const [nouveauTag, setNouveauTag] = useState('')
   const [ajoutTag, setAjoutTag] = useState(false)
@@ -250,7 +250,8 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif }) {
       .then(maj => { setMesEspaces(maj); onModif() })
   }
   function jeter() {
-    supprimerCarte(carte.id).then(() => { onModif(); fermer() })
+    if (onSupprimer) { onSupprimer(carte); fermer() }
+    else supprimerCarte(carte.id).then(() => { onModif(); fermer() })
   }
   const telechargeable = carte.type === 'image' || carte.type === 'video' ||
     (carte.type === 'lien' && !!carte.apercu)
@@ -636,6 +637,27 @@ function PileEspace({ espace, membres, onOuvrir }) {
   )
 }
 
+// --- Une carte dans la corbeille (restaurer / supprimer définitivement) ---
+function joursAvantPurge(carte, duree) {
+  const reste = duree - (Date.now() - (carte.supprimeLe || 0))
+  return Math.max(0, Math.ceil(reste / (24 * 3600 * 1000)))
+}
+function LigneCorbeille({ carte, duree, onRestaurer, onPurger }) {
+  const jours = joursAvantPurge(carte, duree)
+  const etiquette = carte.titre || carte.texte || domaineDe(carte.url || '') || 'Carte'
+  return (
+    <div className="brique corbeille-item">
+      <div className="corbeille-apercu"><Vignette carte={carte} /></div>
+      <p className="corbeille-titre">{etiquette.slice(0, 80)}</p>
+      <p className="corbeille-delai">Purge dans {jours} j</p>
+      <div className="corbeille-actions">
+        <button className="bouton-second" onClick={onRestaurer}>Restaurer</button>
+        <button className="bouton-danger" onClick={onPurger}>Supprimer</button>
+      </div>
+    </div>
+  )
+}
+
 // --- Serendipity : une carte mise en avant, Oublier / Garder -----
 function CarteFocus({ carte }) {
   const src = useSrcImage(carte)
@@ -794,7 +816,44 @@ export default function App() {
   const [importOuvert, setImportOuvert] = useState(false)
   const [serenQueue, setSerenQueue] = useState([]) // ids des cartes mises en avant
   const [serenIdx, setSerenIdx] = useState(0)
+  const [annulSuppr, setAnnulSuppr] = useState(null) // carte récemment supprimée (bandeau « Annuler »)
+  const timerAnnul = useRef(null)
   const sync = useSync()
+
+  // Suppression avec fenêtre d'annulation : la carte part en corbeille
+  // (récupérable 30 jours) et un bandeau « Annuler » s'affiche ~7 s.
+  function demanderSuppression(carte) {
+    supprimerCarte(carte.id).then(() => {
+      setAnnulSuppr(carte)
+      clearTimeout(timerAnnul.current)
+      timerAnnul.current = setTimeout(() => setAnnulSuppr(null), 7000)
+      sync.planifier()
+    })
+  }
+  function annulerSuppression() {
+    const c = annulSuppr
+    if (!c) return
+    clearTimeout(timerAnnul.current)
+    setAnnulSuppr(null)
+    restaurerCarte(c.id).then(() => sync.planifier())
+  }
+  // Restaure une carte depuis la corbeille.
+  function restaurerDepuisCorbeille(carte) {
+    restaurerCarte(carte.id).then(() => sync.planifier())
+  }
+  // Supprime définitivement une carte (efface les fichiers Drive tout de suite).
+  // Hors-ligne : on marque la carte comme échue → la sync la purgera plus tard.
+  function purgerDefinitivement(carte) {
+    purgerCarte(carte)
+      .then(() => db.cartes.delete(carte.id))
+      .catch(() => majCarte(carte.id, { supprimeLe: 1 }))
+      .finally(() => sync.planifier())
+  }
+  function viderCorbeille() {
+    if (!corbeille.length) return
+    if (!window.confirm(`Vider la corbeille ? ${corbeille.length} carte(s) seront supprimées définitivement.`)) return
+    corbeille.forEach(purgerDefinitivement)
+  }
 
   // Capture (bookmarklet / iOS) — création réelle de la carte, une fois.
   const syncRef = useRef(sync.planifier)
@@ -840,12 +899,18 @@ export default function App() {
     contenu.forEach(c => (c.tags || []).forEach(t => { compte[t] = (compte[t] || 0) + 1 }))
     const tags = Object.entries(compte).sort((a, b) => b[1] - a[1]).map(([t]) => t)
 
-    return { tags, espaces, contenu }
+    // Corbeille : cartes supprimées (récupérables 30 jours), plus récentes d'abord.
+    const corbeille = toutes
+      .filter(c => c.supprime && c.type !== 'espace')
+      .sort((a, b) => (b.supprimeLe || 0) - (a.supprimeLe || 0))
+
+    return { tags, espaces, contenu, corbeille }
   }, [])
 
   const tousTags = base?.tags || []
   const espaces = base?.espaces || []
   const contenu = useMemo(() => base?.contenu || [], [base])
+  const corbeille = base?.corbeille || []
 
   // Index plein-texte MiniSearch : reconstruit UNIQUEMENT quand la liste
   // des cartes change (pas à chaque frappe). ~2300 cartes → construction
@@ -926,6 +991,9 @@ export default function App() {
         <div className="rail-marque">MonCoffre</div>
         <div className="rail-bas">
           <StatutSync etat={sync.etat} brancher={sync.brancher} lancer={sync.lancer} />
+          <button className="rail-bouton rail-corbeille" title="Corbeille" onClick={() => setVue('corbeille')}>
+            🗑{corbeille.length > 0 && <span className="rail-badge">{corbeille.length}</span>}
+          </button>
           <button className="rail-bouton" title="Importer depuis mymind" onClick={() => setImportOuvert(true)}>↓↓</button>
           <a className="rail-bouton" href="capturer.html" title="Configurer la capture">⚙</a>
         </div>
@@ -1004,7 +1072,8 @@ export default function App() {
               {cartes?.map(c => (
                 <Carte key={c.id} carte={c}
                        onOuvrir={(carte, src) => setOuverte({ carte, src })}
-                       onModif={sync.planifier} />
+                       onModif={sync.planifier}
+                       onSupprimer={demanderSuppression} />
               ))}
             </main>
           </>
@@ -1070,6 +1139,44 @@ export default function App() {
             />
           )
         )}
+
+        {/* ====== VUE CORBEILLE ====== */}
+        {vue === 'corbeille' && (
+          <>
+            <div className="entete-vue">
+              <h1 className="titre-serif">Corbeille</h1>
+              {corbeille.length > 0 && (
+                <button className="bouton-creer-espace" onClick={viderCorbeille}>
+                  <span className="anneau" style={{ borderColor: 'hsl(6, 60%, 55%)' }} />Vider la corbeille
+                </button>
+              )}
+            </div>
+
+            {corbeille.length === 0 ? (
+              <div className="vide">
+                <div className="orbe" />
+                <h2>La corbeille est vide.</h2>
+                <p>Les cartes supprimées atterrissent ici et restent récupérables
+                   pendant 30 jours avant d'être effacées pour de bon.</p>
+              </div>
+            ) : (
+              <>
+                <p className="corbeille-note">Les cartes sont conservées 30 jours, puis effacées définitivement (fichiers Drive compris).</p>
+                <main className="grille">
+                  {corbeille.map(c => (
+                    <LigneCorbeille
+                      key={c.id}
+                      carte={c}
+                      duree={DUREE_CORBEILLE}
+                      onRestaurer={() => restaurerDepuisCorbeille(c)}
+                      onPurger={() => purgerDefinitivement(c)}
+                    />
+                  ))}
+                </main>
+              </>
+            )}
+          </>
+        )}
       </div>
 
       {/* ---- Bouton + ---- */}
@@ -1093,6 +1200,7 @@ export default function App() {
           tousTags={tousTags}
           fermer={() => setOuverte(null)}
           onModif={sync.planifier}
+          onSupprimer={demanderSuppression}
         />
       )}
       {capture && (
@@ -1102,6 +1210,12 @@ export default function App() {
             <strong>Gardé dans MonCoffre</strong>
             <p>{capture.titre || capture.url || capture.note || 'Nouvelle carte'}</p>
           </div>
+        </div>
+      )}
+      {annulSuppr && (
+        <div className="toast-annul">
+          <span>Carte supprimée</span>
+          <button onClick={annulerSuppression}>Annuler</button>
         </div>
       )}
     </div>

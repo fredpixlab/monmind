@@ -630,3 +630,52 @@ body {
   .nav-haut { padding: 14px 4px 6px; gap: 18px; }
   .hero-recherche { font-size: 30px; }
 }
+
+/* ---------- Bandeau « Annuler » (suppression) ---------- */
+.toast-annul {
+  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 14px;
+  background: var(--encre); color: white;
+  padding: 12px 16px 12px 20px; border-radius: 12px;
+  box-shadow: var(--ombre-lg); z-index: 60;
+  animation: monte-annul .18s ease;
+}
+.toast-annul button {
+  border: none; background: transparent; color: hsl(18, 90%, 68%);
+  font-weight: 600; cursor: pointer; font-size: 14px; padding: 4px 6px;
+}
+.toast-annul button:hover { text-decoration: underline; }
+@keyframes monte-annul {
+  from { opacity: 0; transform: translate(-50%, 10px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* ---------- Badge corbeille (rail) ---------- */
+.rail-corbeille { position: relative; }
+.rail-badge {
+  position: absolute; top: -4px; right: -4px;
+  min-width: 16px; height: 16px; padding: 0 4px;
+  background: hsl(6, 60%, 55%); color: white;
+  border-radius: 999px; font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ---------- Vue Corbeille ---------- */
+.corbeille-note { padding: 0 8px 14px; font-size: 14px; color: var(--encre-2); }
+.corbeille-item {
+  background: var(--carte); border: 1px solid var(--trait);
+  border-radius: 14px; padding: 10px; break-inside: avoid;
+}
+.corbeille-apercu {
+  height: 120px; border-radius: 10px; overflow: hidden;
+  background: var(--fond); display: flex; align-items: center; justify-content: center;
+}
+.corbeille-apercu .pile-img { width: 100%; height: 100%; object-fit: cover; }
+.corbeille-titre { margin: 8px 2px 2px; font-size: 14px; color: var(--encre); line-height: 1.3; }
+.corbeille-delai { margin: 0 2px 8px; font-size: 12px; color: hsl(6, 45%, 52%); }
+.corbeille-actions { display: flex; gap: 8px; }
+.corbeille-actions button { flex: 1; font-size: 13px; padding: 7px 8px; border-radius: 9px; cursor: pointer; }
+.bouton-danger {
+  border: 1px solid hsl(6, 50%, 78%); background: hsl(6, 70%, 97%); color: hsl(6, 55%, 45%);
+}
+.bouton-danger:hover { background: hsl(6, 70%, 94%); }

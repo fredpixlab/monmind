@@ -11,7 +11,7 @@
 // Authentification : Google Identity Services (jeton d'accès côté
 // navigateur, permission drive.file = l'app ne voit que ses fichiers).
 // ==================================================================
-import { db, upsertDepuisDrive, getReglage, setReglage } from './db.js'
+import { db, upsertDepuisDrive, getReglage, setReglage, estEchu } from './db.js'
 import { CLIENT_ID, DRIVE_SCOPE, DOSSIER_RACINE, DOSSIER_CARTES } from './config.js'
 import { typeMime } from './vignette.js'
 
@@ -255,6 +255,20 @@ async function supprimerFichier(fileId) {
   await api(`/files/${fileId}`, { method: 'DELETE' })
 }
 
+// Purge immédiate d'une carte (bouton « Supprimer définitivement » de la
+// corbeille) : efface ses fichiers Drive connus + pose la pierre tombale.
+// L'appelant retire ensuite la carte locale. Nécessite d'être connecté.
+export async function purgerCarte(carte) {
+  await jetonValide()
+  await garantirDossiers()
+  for (const fid of [carte.driveMdId, carte.driveMediaId, carte.driveVignetteId, carte.driveImgId]) {
+    if (fid) await supprimerFichier(fid).catch(() => {})
+  }
+  await televerser(null,
+    { name: `${carte.id}.deleted`, parents: [cartesId], appProperties: { cardId: carte.id } },
+    new Blob(['supprimé']), 'text/plain')
+}
+
 // Upload « resumable » (pour les gros fichiers : vidéos, grosses images).
 // L'upload multipart simple est limité à ~5 Mo ; au-delà, on ouvre une
 // session resumable puis on envoie le contenu.
@@ -395,6 +409,9 @@ function serialiserMd(carte, nomImage) {
     apercu: carte.apercu || '', tags: carte.tags || [], note: carte.note || '',
     espaces: carte.espaces || [],   // appartenance aux espaces (pin manuel)
     tag: carte.tag || '',           // pour un espace « intelligent » : son tag
+    // État corbeille (propagé aux autres appareils sans effacer les fichiers).
+    supprime: carte.supprime ? 1 : 0,
+    supprimeLe: carte.supprimeLe || 0,
     creeLe: carte.creeLe, modifieLe: carte.modifieLe,
     image: nomImage || '',
     // Médias « à la demande » (import mymind) : le fichier complet vit
@@ -482,29 +499,34 @@ async function _synchroniser() {
     const locale = localesParId.get(id)
     const dist = parCarte.get(id)
 
-    // 1) Suppression distante → on efface localement
+    // 1) Tombstone distant = carte PURGÉE ailleurs (après ses 30 jours) → on
+    //    l'efface définitivement en local aussi.
     if (dist?.deleted) {
-      if (locale && !locale.supprime) {
-        await upsertDepuisDrive({ ...locale, supprime: 1 })
-        suppr++
-      }
+      if (locale) { await db.cartes.delete(id); suppr++ }
       continue
     }
 
-    // 2) Suppression locale → on propage vers Drive
-    if (locale?.supprime) {
-      if (dist?.md || dist?.img || dist?.media || dist?.vignette) {
-        if (dist.md) await supprimerFichier(dist.md.id)
-        if (dist.img) await supprimerFichier(dist.img.id)
-        if (dist.media) await supprimerFichier(dist.media.id)
-        if (dist.vignette) await supprimerFichier(dist.vignette.id)
-        await televerser(null,
-          { name: `${id}.deleted`, parents: [cartesId], appProperties: { cardId: id } },
-          new Blob(['supprimé']), 'text/plain')
-        suppr++
-      }
+    // 2) Carte en corbeille depuis PLUS de 30 jours → purge définitive :
+    //    on efface les fichiers Drive, on pose la pierre tombale, et on
+    //    retire la carte localement.
+    if (locale?.supprime && estEchu(locale)) {
+      if (dist?.md) await supprimerFichier(dist.md.id)
+      if (dist?.img) await supprimerFichier(dist.img.id)
+      if (dist?.media) await supprimerFichier(dist.media.id)
+      if (dist?.vignette) await supprimerFichier(dist.vignette.id)
+      await televerser(null,
+        { name: `${id}.deleted`, parents: [cartesId], appProperties: { cardId: id } },
+        new Blob(['supprimé']), 'text/plain')
+      await db.cartes.delete(id)
+      suppr++
       continue
     }
+
+    // NB : une carte en corbeille NON échue n'est PAS traitée ici — elle suit
+    // le flux normal ci-dessous. Son .md porte supprime:1 + supprimeLe : il est
+    // téléversé / reçu comme une simple mise à jour, donc l'état « corbeille »
+    // se propage à tous les appareils SANS effacer les fichiers (récupérables
+    // pendant 30 jours).
 
     const modLocale = locale?.modifieLe || 0
     const modDist = dist?.md ? Number(dist.md.appProperties?.modifieLe || 0) : 0
@@ -584,7 +606,8 @@ async function recevoirCarte(id, dist) {
     tags: meta.tags || [],
     espaces: meta.espaces || [],
     tag: meta.tag || '',
-    supprime: 0,
+    supprime: meta.supprime ? 1 : 0,
+    supprimeLe: meta.supprimeLe || 0,
     creeLe: meta.creeLe,
     modifieLe: meta.modifieLe,
     driveMdId: dist.md.id
