@@ -12,7 +12,7 @@
 // navigateur, permission drive.file = l'app ne voit que ses fichiers).
 // ==================================================================
 import { db, upsertDepuisDrive, getReglage, setReglage, estEchu } from './db.js'
-import { CLIENT_ID, DRIVE_SCOPE, DOSSIER_RACINE, DOSSIER_CARTES } from './config.js'
+import { CLIENT_ID, DRIVE_SCOPE, DOSSIER_RACINE, DOSSIER_CARTES, API_BASE } from './config.js'
 import { typeMime } from './vignette.js'
 
 const API = 'https://www.googleapis.com/drive/v3'
@@ -120,14 +120,42 @@ async function chargerJetonPersiste() {
   if (j && j.access_token && Date.now() < j.expire) jeton = j
 }
 
+// --- Session « backend » (connexion Drive permanente, Phase B) ----------
+// Si l'app a un `sid` (jeton de session émis par le Worker après OAuth), on
+// obtient les access_tokens Drive via le backend (POST /token) au lieu du
+// renouvellement silencieux GIS — bloqué par Safari. Le sid vit dans IndexedDB
+// et voyage en en-tête Authorization (pas un cookie tiers). Sinon, on garde
+// tout le mécanisme GIS d'origine (repli).
+async function sidCourant() { return API_BASE ? await getReglage('sid', null) : null }
+export async function enregistrerSession(sid) { await setReglage('sid', sid) }
+export async function aSessionBackend() { return !!(await sidCourant()) }
+
+async function jetonViaBackend() {
+  const sid = await sidCourant()
+  if (!sid) return null
+  if (jeton && Date.now() < jeton.expire) return jeton.access_token
+  const rep = await fetch(API_BASE + '/token', { method: 'POST', headers: { Authorization: 'Bearer ' + sid } })
+  if (rep.status === 401) { await setReglage('sid', null); return null } // session morte → repli GIS
+  if (!rep.ok) throw new Error('token backend ' + rep.status)
+  const j = await rep.json()
+  const duree = (j.expires_in && j.expires_in > 0) ? j.expires_in : 3600
+  jeton = { access_token: j.access_token, expire: Date.now() + (duree - 60) * 1000 }
+  await setReglage('jeton', jeton).catch(() => {})
+  return j.access_token
+}
+
 // Le jeton courant s'il est valide, SANS jamais déclencher de fenêtre Google.
 // Utilisé par l'affichage (ouverture d'une carte) : pas de popup surprise.
 export async function jetonPret() {
+  const b = await jetonViaBackend().catch(() => null)
+  if (b) return b
   if (!jeton) await chargerJetonPersiste()
   return (jeton && Date.now() < jeton.expire) ? jeton.access_token : null
 }
 
 async function jetonValide() {
+  const b = await jetonViaBackend().catch(() => null)
+  if (b) return b
   if (!jeton) await chargerJetonPersiste()
   if (jeton && Date.now() < jeton.expire) return jeton.access_token
   // Silencieux connu comme bloqué → inutile de retenter (ça ne ferait que
@@ -137,9 +165,14 @@ async function jetonValide() {
   return jeton.access_token
 }
 
-// Rafraîchit le jeton en tâche de fond quand il lui reste peu de validité —
-// SEULEMENT si le renouvellement silencieux fonctionne sur ce navigateur.
+// Rafraîchit le jeton en tâche de fond quand il lui reste peu de validité.
+// Avec une session backend : passe par le Worker (marche partout, Safari inclus).
+// Sinon : renouvellement silencieux GIS, SEULEMENT s'il fonctionne sur ce navigateur.
 export async function rafraichirJeton() {
+  if (await sidCourant()) {
+    if (!jeton || Date.now() > jeton.expire - 5 * 60 * 1000) { await jetonViaBackend().catch(() => {}) }
+    return
+  }
   if (silentBloque) return
   if (!jeton) await chargerJetonPersiste()
   if (!jeton) return
@@ -148,10 +181,14 @@ export async function rafraichirJeton() {
   }
 }
 
-// Connexion volontaire (clic sur le bouton). Montre le sélecteur Google
-// (et le consentement la première fois seulement). Réactive le silencieux
-// (peut-être que les cookies ont été rétablis entre-temps).
+// Connexion volontaire (clic sur le bouton). Avec un backend : redirige vers le
+// consentement Google (offline) → connexion PERMANENTE (le Worker garde le
+// refresh_token). Sans backend : ancien flux GIS (jeton 1 h, popup).
 export async function connecter() {
+  if (API_BASE) {
+    window.location.href = API_BASE + '/login'
+    return new Promise(() => {}) // la page navigue ailleurs ; ne se résout pas
+  }
   if (!tokenClient) await initAuth()
   await demanderJeton('')
   silentBloque = false
@@ -161,9 +198,12 @@ export async function connecter() {
 }
 
 export async function estDejaConnecte() {
+  if (await sidCourant()) return true
   return (await getReglage('driveConnecte', false)) === true
 }
 
+// Ne touche PAS au `sid` : une erreur transitoire ne doit pas casser la session
+// permanente (le sid n'est effacé que sur un vrai 401 du backend, ou logout).
 export async function deconnecter() {
   jeton = null
   await setReglage('driveConnecte', false)

@@ -4,7 +4,7 @@ import { db, ajouterCarte, supprimerCarte, restaurerCarte, majCarte, estUneUrl, 
 import { construireIndex, rechercher } from './recherche.js'
 import { ajouterMediaDepuisFichier, estMediaSupporte, estFichierOcr, injecterOcr, ocrEnFond } from './ajout-media.js'
 import { sync_configuree, API_BASE } from './config.js'
-import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion, telechargerMediaComplet, rafraichirJeton, purgerCarte } from './drive.js'
+import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion, telechargerMediaComplet, rafraichirJeton, purgerCarte, enregistrerSession, aSessionBackend } from './drive.js'
 import { lancerImport } from './import-run.js'
 
 // ---------------------------------------------------------------
@@ -741,6 +741,7 @@ function Composeur({ fermer, onAjout }) {
 function useSync() {
   const [etat, setEtat] = useState('inconnu')
   const [progression, setProgression] = useState(null) // { recues, total } — gros téléchargement en cours
+  const [permanent, setPermanent] = useState(false)    // session backend (connexion Drive permanente)
   const timer = useRef(null)
   const dernierTick = useRef(0)
 
@@ -784,7 +785,16 @@ function useSync() {
   useEffect(() => {
     if (!sync_configuree()) { setEtat('non_configure'); return }
     (async () => {
+      // Retour du backend après connexion permanente : #connexion=<sid> (le sid
+      // arrive dans le fragment, jamais envoyé aux serveurs). On l'enregistre et
+      // on nettoie l'URL.
+      const m = window.location.hash.match(/[#&]connexion=([^&]+)/)
+      if (m) {
+        await enregistrerSession(decodeURIComponent(m[1])).catch(() => {})
+        history.replaceState(null, '', window.location.pathname + window.location.search)
+      }
       await initAuth()
+      setPermanent(await aSessionBackend())
       if (await estDejaConnecte()) { setEtat('pret'); lancer() }
       else setEtat('deconnecte')
     })().catch(e => { console.error(e); setEtat('erreur') })
@@ -815,7 +825,7 @@ function useSync() {
     catch (e) { console.error(e); setEtat('erreur') }
   }, [lancer])
 
-  return { etat, brancher, planifier, lancer, progression }
+  return { etat, brancher, planifier, lancer, progression, permanent }
 }
 
 function StatutSync({ etat, brancher, lancer }) {
@@ -1484,6 +1494,10 @@ export default function App() {
         <div className="rail-marque">MonCoffre</div>
         <div className="rail-bas">
           <StatutSync etat={sync.etat} brancher={sync.brancher} lancer={sync.lancer} />
+          {API_BASE && !sync.permanent && (
+            <button className="rail-bouton rail-permanent" title="Connexion Drive permanente (recommandé) — reste connecté partout, Safari compris"
+                    onClick={sync.brancher}>🔒</button>
+          )}
           <button className="rail-bouton" title="Statistiques" onClick={() => setVue('stats')}>📊</button>
           <button className="rail-bouton rail-corbeille" title="Corbeille" onClick={() => setVue('corbeille')}>
             🗑{corbeille.length > 0 && <span className="rail-badge">{corbeille.length}</span>}

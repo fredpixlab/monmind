@@ -1,7 +1,21 @@
 # Backend MonCoffre — Cloudflare Worker.
-# Phase A : service d'aperçus de liens (/preview). Aucun secret requis.
-# Phase B (à venir) : connexion Drive permanente (/login, /callback, /token)
-#   → ajoutera un binding KV (jeton chiffré) et des secrets (client OAuth).
+# Phase A : /preview (aperçus de liens). Phase B : /login /callback /token
+#   (connexion Drive permanente — refresh_token chiffré en KV).
 name = "moncoffre-api"
 main = "src/index.js"
 compatibility_date = "2024-11-01"
+
+# Sessions + états OAuth éphémères (refresh_token chiffré).
+[[kv_namespaces]]
+binding = "JETONS"
+id = "1b2c7321d6904a7abb2cad529e542029"
+
+[vars]
+# CLIENT_ID Google (public). REDIRECT_URI doit être déclarée dans la console
+# Google Cloud (OAuth). APP_RETOUR = où renvoyer l'app après connexion.
+GOOGLE_CLIENT_ID = "791212169245-v98msguu6c4fl19t8075l0ktij7t5hp3.apps.googleusercontent.com"
+REDIRECT_URI = "https://moncoffre-api.fredpixlab.workers.dev/callback"
+APP_RETOUR = "https://fredpixlab.github.io/monmind/"
+
+# Secrets (jamais dans le repo) : posés via `wrangler secret put` —
+#   TOKEN_KEY (clé de chiffrement, faite), GOOGLE_CLIENT_SECRET (à fournir par Fred).
