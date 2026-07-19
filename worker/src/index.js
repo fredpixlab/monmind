@@ -80,10 +80,26 @@ function decode(s) {
     .replace(/&amp;/g, '&')
 }
 
+function idYouTube(u) {
+  const m = (u || '').match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([\w-]{11})/)
+  return m ? m[1] : null
+}
+
 async function extraire(cible) {
   const d = domaine(cible)
+  if (idYouTube(cible)) return await youtube(cible, d)
   if (/(^|\.)(twitter\.com|x\.com)$/.test(d)) return await twitter(cible, d)
   return await ogImage(cible, d)
+}
+
+// YouTube : oEmbed officiel (titre de la vidéo + miniature + chaîne), sans clé.
+async function youtube(cible, d) {
+  const api = 'https://www.youtube.com/oembed?format=json&url=' + encodeURIComponent(cible)
+  const r = await fetch(api, { headers: { 'User-Agent': UA } })
+  if (!r.ok) return { erreur: 'oembed yt ' + r.status, dom: d }
+  const j = await r.json().catch(() => null)
+  if (!j) return { erreur: 'oembed yt illisible', dom: d }
+  return { image: j.thumbnail_url || '', titre: decode(j.title || '').slice(0, 200), texte: '', dom: d }
 }
 
 async function ogImage(cible, d) {

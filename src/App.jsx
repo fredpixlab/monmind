@@ -1390,8 +1390,10 @@ export default function App() {
     if (modeExt || !API_BASE || enrichLance.current || !contenu.length) return
     enrichLance.current = true
     ;(async () => {
+      // Cartes lien à enrichir : aperçu OU titre manquant (YouTube compris : on
+      // récupère le titre de la vidéo). `enrichi` = déjà tenté (marqueur local).
       const aFaire = contenu.filter(c =>
-        c.type === 'lien' && c.url && !c.apercu && !c.apercuTente && !idYouTube(c.url))
+        c.type === 'lien' && c.url && !c.enrichi && (!c.apercu || !(c.titre || '').trim()))
       for (let i = 0; i < aFaire.length; i += 6) {
         const lot = aFaire.slice(i, i + 6)
         const updates = []
@@ -1401,10 +1403,12 @@ export default function App() {
             const r = await fetch(`${API_BASE}/preview?url=${encodeURIComponent(c.url)}`)
             if (!r.ok) return // KO serveur → pas de marquage, on retentera
             const j = await r.json()
-            const ch = { apercuTente: 1 }
-            if (j.image) { ch.apercu = j.image; besoinSync = true }
-            if (!(c.texte || '').trim() && j.texte) { ch.texte = j.texte; besoinSync = true }
-            if (ch.apercu || ch.texte) ch.modifieLe = Date.now() // change réel → à synchroniser
+            const ch = { enrichi: 1 }
+            if (j.image && !c.apercu) { ch.apercu = j.image; besoinSync = true }
+            if (j.titre && !(c.titre || '').trim()) { ch.titre = j.titre; besoinSync = true }
+            const extrait = j.texte || j.desc   // tweet, ou description (metas) du site
+            if (extrait && !(c.texte || '').trim()) { ch.texte = extrait; besoinSync = true }
+            if (ch.apercu || ch.titre || ch.texte) ch.modifieLe = Date.now() // change réel → à synchroniser
             updates.push({ key: c.id, changes: ch })
           } catch { /* réseau KO → on retentera plus tard */ }
         }))
@@ -1412,7 +1416,7 @@ export default function App() {
         if (besoinSync) syncRef.current?.()
         await new Promise(r => setTimeout(r, 500))
       }
-    })().catch(e => console.error('[apercu-lien]', e))
+    })().catch(e => console.error('[enrichir-lien]', e))
   }, [contenu, modeExt])
 
   // Passe à la carte précédente / suivante dans l'ordre affiché (façon mymind).
