@@ -26,6 +26,18 @@ function couleurTag(tag) {
   return `hsl(${h}, 60%, 52%)`
 }
 
+// Suggestions d'auto-complétion pour un champ tag, PLAFONNÉES. Indispensable :
+// un <datalist> contenant les milliers de tags de la bibliothèque fait planter
+// Safari iOS (voire le téléphone) dès qu'on focus le champ. On filtre sur la
+// saisie et on limite à 24 options — largement assez pour aider, sans faire
+// exploser le rendu de la liste native.
+function suggestionsTags(tousTags, dejaMis, saisie) {
+  const q = (saisie || '').trim().toLowerCase()
+  const dispo = tousTags.filter(t => !dejaMis.includes(t))
+  const filtres = q ? dispo.filter(t => t.includes(q)) : dispo
+  return filtres.slice(0, 24)
+}
+
 // Date relative simple (« il y a 3 jours »).
 function dateRelative(ts) {
   const s = Math.floor((Date.now() - ts) / 1000)
@@ -758,8 +770,11 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
                   onBlur={ajouterTag}
                 />
               )}
+              {/* ⚠️ On PLAFONNE la liste : un <datalist> de milliers d'options
+                  (Fred a 5000+ tags) fait planter Safari iOS au focus. On filtre
+                  sur ce qui est tapé et on limite à 24 suggestions. */}
               <datalist id="tags-connus">
-                {tousTags.filter(t => !tags.includes(t)).map(t => <option key={t} value={t} />)}
+                {suggestionsTags(tousTags, tags, nouveauTag).map(t => <option key={t} value={t} />)}
               </datalist>
             </div>
 
@@ -947,7 +962,7 @@ function Composeur({ fermer, onAjout, tousTags = [] }) {
             onBlur={() => ajouterTagLocal()}
           />
           <datalist id="composeur-tags-connus">
-            {tousTags.filter(t => !tags.includes(t)).map(t => <option key={t} value={t} />)}
+            {suggestionsTags(tousTags, tags, tagSaisie).map(t => <option key={t} value={t} />)}
           </datalist>
         </div>
 
