@@ -117,8 +117,11 @@ export async function ocrEnFond(cardId, file) {
   }
 }
 
-// Ajoute un fichier déposé. Renvoie 'ok' | 'ok-local' | 'ignore' | 'besoin-drive'.
-export async function ajouterMediaDepuisFichier(file) {
+// Ajoute un fichier déposé (glisser-déposer OU sélection depuis le Composeur,
+// mobile compris). `extra` permet de joindre des champs à la création, par ex.
+// une légende tapée dans le Composeur : `{ texte }`.
+// Renvoie 'ok' | 'ok-local' | 'ignore' | 'besoin-drive'.
+export async function ajouterMediaDepuisFichier(file, extra = {}) {
   const { type, ext } = typeEtExt(file)
   if (!type) return 'ignore'
 
@@ -127,7 +130,8 @@ export async function ajouterMediaDepuisFichier(file) {
   const base = {
     id: nouvelId(), type, titre: (file.name || '').replace(/\.[^.]+$/, ''),
     texte: '', url: '', tags: [], espaces: [], mediaExt: ext,
-    creeLe: maintenant, modifieLe: maintenant
+    creeLe: maintenant, modifieLe: maintenant,
+    ...extra   // ex. { texte } — écrase les valeurs par défaut ci-dessus
   }
 
   // Repli local (image seulement : le blob vit en local et se synchronise

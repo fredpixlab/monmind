@@ -552,28 +552,60 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
 // --- Composeur (ajout d'une carte) -------------------------------
 function Composeur({ fermer, onAjout }) {
   const [texte, setTexte] = useState('')
-  const [image, setImage] = useState(null)
+  const [image, setImage] = useState(null)   // image → carte image locale (+ OCR)
+  const [media, setMedia] = useState(null)   // vidéo / PDF → média « à la demande » (Drive)
   const [apercu, setApercu] = useState(null)
+  const [envoi, setEnvoi] = useState(false)  // envoi d'un média vers Drive en cours
+  const [erreur, setErreur] = useState(null)
   const fichierRef = useRef(null)
   const zoneRef = useRef(null)
 
   useEffect(() => { zoneRef.current?.focus() }, [])
 
-  function choisirImage(fichier) {
-    if (!fichier?.type.startsWith('image/')) return
-    setImage(fichier)
-    setApercu(URL.createObjectURL(fichier))
+  // Tri d'un fichier choisi (bouton ou collage) : image → aperçu local ;
+  // vidéo / PDF → média « à la demande » (vignette + fichier envoyé dans Drive).
+  function choisirFichier(fichier) {
+    if (!fichier) return
+    setErreur(null)
+    if (fichier.type.startsWith('image/')) {
+      setImage(fichier); setMedia(null)
+      setApercu(URL.createObjectURL(fichier))
+    } else if (estMediaSupporte(fichier)) {
+      setMedia(fichier); setImage(null)
+      setApercu(fichier.type.startsWith('video/') ? URL.createObjectURL(fichier) : null)
+    } else {
+      setImage(null); setMedia(null); setApercu(null)
+      setErreur('Format non pris en charge (images, vidéos, PDF).')
+    }
   }
   function surCollage(e) {
     const item = [...e.clipboardData.items].find(i => i.type.startsWith('image/'))
-    if (item) { e.preventDefault(); choisirImage(item.getAsFile()) }
+    if (item) { e.preventDefault(); choisirFichier(item.getAsFile()) }
   }
+  const aMedia = !!(image || media)
   async function enregistrer() {
+    if (envoi) return
     const propre = texte.trim()
-    if (!propre && !image) return
+    if (!propre && !aMedia) return
     if (image) {
       const c = await ajouterCarte({ type: 'image', image, texte: propre })
       ocrEnFond(c.id, image)
+    } else if (media) {
+      // Vidéo / PDF → même plomberie que le glisser-déposer : vignette locale
+      // + fichier complet envoyé dans Drive (chargé à la demande ensuite).
+      setEnvoi(true)
+      let r
+      try { r = await ajouterMediaDepuisFichier(media, { texte: propre }) }
+      catch (e) { console.error('[composeur-media]', e); r = 'erreur' }
+      setEnvoi(false)
+      if (r === 'besoin-drive') {
+        setErreur('Connecte Google Drive (à gauche) pour ajouter une vidéo ou un PDF.')
+        return
+      }
+      if (r === 'erreur' || r === 'ignore') {
+        setErreur("Ce fichier n'a pas pu être ajouté. Réessaie ou choisis-en un autre.")
+        return
+      }
     } else if (estUneUrl(propre)) {
       await ajouterCarte({ type: 'lien', url: propre, titre: '' })
     } else {
@@ -584,33 +616,36 @@ function Composeur({ fermer, onAjout }) {
   }
 
   return (
-    <div className="voile" onClick={e => { if (e.target === e.currentTarget) fermer() }}>
+    <div className="voile" onClick={e => { if (e.target === e.currentTarget && !envoi) fermer() }}>
       <div className="composeur">
         <textarea
           ref={zoneRef}
-          placeholder="Une pensée, un lien, une image collée…"
+          placeholder="Une pensée, un lien, une image, une vidéo…"
           value={texte}
           onChange={e => setTexte(e.target.value)}
           onPaste={surCollage}
           onKeyDown={e => {
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) enregistrer()
-            if (e.key === 'Escape') fermer()
+            if (e.key === 'Escape' && !envoi) fermer()
           }}
         />
-        {apercu && <img className="apercu-image" src={apercu} alt="Aperçu" />}
+        {apercu && image && <img className="apercu-image" src={apercu} alt="Aperçu" />}
+        {apercu && media && <video className="apercu-image" src={apercu} controls playsInline muted />}
+        {media && !apercu && <p className="apercu-fichier">📄 {media.name || 'Document'}</p>}
+        {erreur && <p className="import-erreur">{erreur}</p>}
         <div className="actions">
           <button className="bouton-second" onClick={() => fichierRef.current.click()}>
-            Photo / image
+            Photo, vidéo, PDF
           </button>
           <input
-            ref={fichierRef} type="file" accept="image/*" hidden
-            onChange={e => choisirImage(e.target.files[0])}
+            ref={fichierRef} type="file" accept="image/*,video/*,application/pdf" hidden
+            onChange={e => choisirFichier(e.target.files[0])}
           />
           <button
             className="bouton-principal"
-            disabled={!texte.trim() && !image}
+            disabled={(!texte.trim() && !aMedia) || envoi}
             onClick={enregistrer}
-          >Garder</button>
+          >{envoi ? 'Envoi…' : 'Garder'}</button>
         </div>
       </div>
     </div>
