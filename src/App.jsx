@@ -664,19 +664,20 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
                 : <p className="dc-note-texte">{carte.texte}</p>}
             </div>
           )}
-        </div>
 
-        {/* Onglet : tire / referme le panneau d'infos (desktop). Masqué en
-            mobile, où le panneau coule déjà sous le média. */}
-        <button
-          className="detail-onglet"
-          onClick={() => setPanneauOuvert(o => !o)}
-          title={panneauOuvert ? 'Masquer les infos' : 'Tags, note & espaces'}
-          aria-label={panneauOuvert ? 'Masquer le panneau d’infos' : 'Afficher le panneau d’infos'}
-        >
-          <span className="detail-onglet-fleche">{panneauOuvert ? '›' : '‹'}</span>
-          <span className="detail-onglet-txt">Infos</span>
-        </button>
+          {/* Onglet : ouvre / referme le panneau d'infos. Placé DANS le contenu
+              pour s'ancrer au média. Desktop : tab vertical au bord droit du
+              média. Mobile : barre fixée en bas (voir CSS). */}
+          <button
+            className="detail-onglet"
+            onClick={() => setPanneauOuvert(o => !o)}
+            title={panneauOuvert ? 'Masquer les infos' : 'Tags, note & espaces'}
+            aria-label={panneauOuvert ? 'Masquer le panneau d’infos' : 'Afficher le panneau d’infos'}
+          >
+            <span className="detail-onglet-fleche">{panneauOuvert ? '›' : '‹'}</span>
+            <span className="detail-onglet-txt">Infos</span>
+          </button>
+        </div>
 
         {/* Colonne droite : le panneau d'infos */}
         <aside className="detail-panneau">

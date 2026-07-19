@@ -590,18 +590,20 @@ body {
 }
 .dp-jeter:hover { background: hsl(6, 70%, 96%); color: hsl(6, 60%, 50%); border-color: hsl(6, 60%, 80%); }
 
-/* ---- Panneau d'infos repliable (desktop) : par défaut FERMÉ. Le panneau
-   reste DANS LE FLUX (colonne à droite de l'image) mais est masqué tant qu'il
-   est fermé → l'image seule est centrée sur la page. L'onglet est ancré au bord
-   DROIT de l'image (position absolue dans `.detail-contenu`) : à la fermeture il
-   tient lieu de barre de tags, à l'ouverture il sert de poignée entre l'image et
-   le panneau. À l'ouverture, `.detail-scene` (flex, centré dans le voile) porte
-   image + panneau → l'image se décale à gauche et l'ensemble reste centré,
-   horizontalement ET verticalement. Onglet masqué par défaut (mobile : le
-   panneau coule déjà sous le média) ; la media query desktop le réactive —
-   d'où l'ordre : base AVANT (sinon la règle plate gagne par ordre source). ---- */
+/* ---- Panneau d'infos repliable (desktop + iPad, ≥ 768 px) : par défaut FERMÉ.
+   Le panneau reste DANS LE FLUX (colonne à droite de l'image) mais est masqué
+   tant qu'il est fermé → l'image seule est centrée sur la page. L'onglet est
+   ancré au bord DROIT du média (position absolue dans `.detail-contenu`) : à la
+   fermeture il tient lieu de barre de tags, à l'ouverture il sert de poignée
+   entre l'image et le panneau. À l'ouverture, `.detail-scene` (flex, centré
+   dans le voile) porte image + panneau → l'image se décale à gauche et
+   l'ensemble reste centré, H ET V. Onglet masqué par défaut (règle plate) ; les
+   media queries le réactivent (desktop/iPad : à droite ; téléphone : barre en
+   bas) — d'où l'ordre : base AVANT (sinon la règle plate gagne par ordre
+   source). Seuil 768 px : iPad (portrait ≥ 768 inclus) garde le tiroir à
+   droite, les téléphones passent à la barre du bas. ---- */
 .detail-onglet { display: none; }
-@media (min-width: 821px) {
+@media (min-width: 768px) {
   /* La scène ne prend QUE la largeur de ses enfants (image [+ panneau]) et se
      centre dans le voile → ensemble centré H+V ; l'image se décale à gauche
      quand le panneau apparaît. */
@@ -634,12 +636,11 @@ body {
 }
 @keyframes panneau-entre { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
 
-/* ---- Vue détail sur mobile / écran étroit : mise en page VERTICALE façon
-   mymind. Le média (ou la note / le lien) occupe le haut en grand, puis le
-   panneau (titre, date, tags, note, espaces) COULE en dessous et se lit en
-   faisant défiler toute la page. On donne le maximum de largeur au contenu :
-   le voile lui-même défile, sans marges latérales. ---- */
-@media (max-width: 820px) {
+/* ---- Vue détail sur TÉLÉPHONE (< 768 px) : le média occupe TOUTE la largeur
+   et presque tout l'écran. Le panneau d'infos est une FEUILLE DU BAS qui monte
+   quand on touche la barre « Infos » fixée en bas (même logique de repli que
+   sur desktop, mais orientée bas pour profiter de la largeur). ---- */
+@media (max-width: 767px) {
   .detail-voile {
     align-items: stretch; justify-content: flex-start;
     padding: 0; gap: 0;
@@ -649,32 +650,54 @@ body {
     flex-direction: column; align-items: stretch;
     width: 100%; max-width: none; max-height: none;
     gap: 0; min-height: 100%;
-    padding: calc(env(safe-area-inset-top) + 14px) 0 calc(env(safe-area-inset-bottom) + 28px);
+    padding: calc(env(safe-area-inset-top) + 14px) 0 calc(env(safe-area-inset-bottom) + 78px);
   }
 
-  /* Contenu (média) : plein cadre en haut, bien mis en valeur. */
+  /* Contenu (média) : plein cadre, bien mis en valeur. */
   .detail-contenu {
-    max-height: none; padding: 6px 12px 2px;
-    align-items: flex-start; justify-content: center;
+    max-height: none; padding: 6px 12px 2px; position: static;
+    align-items: center; justify-content: center;
   }
-  .dc-image-nue, .dc-video { max-height: 74vh; width: auto; max-width: 100%; }
+  .dc-image-nue, .dc-video { max-height: 82vh; width: auto; max-width: 100%; }
   .dc-image-enveloppe { width: auto; max-width: 100%; }
-  /* Notes / liens : la carte de texte coule dans la page (pas de scroll interne). */
   .dc-carte { max-height: none; overflow: visible; padding: 26px 22px; }
   .dc-note { display: block; }
 
-  /* Panneau d'infos : feuille claire pleine largeur, sous le média. Il ne
-     défile PAS tout seul (c'est le voile qui défile) → tout l'espace lui est
-     rendu, tags et note compris, exactement comme sur mymind. */
-  .detail-panneau {
-    width: 100%; max-width: none; max-height: none;
-    margin: 10px 10px 0; border-radius: 22px;
-    overflow: visible;
+  /* ----- Barre « Infos » fixée en bas (l'onglet, orienté horizontal) ----- */
+  .detail-onglet {
+    display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 9px;
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+    height: calc(56px + env(safe-area-inset-bottom));
+    padding: 0 18px env(safe-area-inset-bottom);
+    border: none; border-top: 1px solid var(--trait); border-radius: 0;
+    background: hsla(228, 30%, 98%, .98); color: var(--encre);
+    box-shadow: 0 -6px 24px hsla(0, 0%, 0%, .18);
+    cursor: pointer; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    transform: none;
   }
-  .dp-haut { overflow: visible; padding: 24px 22px 8px; }
+  /* Chevron : la flèche ‹/› (verticale sur desktop) est tournée pour pointer
+     vers le HAUT (fermé, « tire vers le haut ») / le BAS (ouvert, « rabaisse »). */
+  .detail-onglet-fleche { transform: rotate(90deg); font-size: 17px; }
+  .detail-onglet-txt {
+    writing-mode: horizontal-tb; text-orientation: mixed;
+    font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  }
+
+  /* ----- Panneau = feuille du bas coulissante, AU-DESSUS de la barre ----- */
+  .detail-panneau {
+    position: fixed; left: 0; right: 0; z-index: 55;
+    bottom: calc(56px + env(safe-area-inset-bottom));
+    width: 100%; max-width: none; max-height: 78vh;
+    margin: 0; border-radius: 22px 22px 0 0; overflow: hidden;
+    box-shadow: 0 -16px 46px hsla(0, 0%, 0%, .34);
+    transform: translateY(110%);
+    transition: transform .3s cubic-bezier(.4, 0, .2, 1);
+  }
+  .detail-scene.panneau-ouvert .detail-panneau { transform: translateY(0); }
+  .dp-haut { overflow-y: auto; max-height: calc(78vh - 76px); padding: 22px 22px 8px; -webkit-overflow-scrolling: touch; }
   .dp-actions {
     justify-content: flex-start; gap: 12px;
-    padding: 14px 22px calc(6px + env(safe-area-inset-bottom));
+    padding: 12px 22px 14px;
   }
   /* Cibles tactiles plus généreuses. */
   .dp-icone { width: 46px; height: 46px; font-size: 18px; }

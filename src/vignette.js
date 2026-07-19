@@ -41,29 +41,77 @@ export function vignetteImage(blob) {
 }
 
 // Vignette (image poster) d'une vidéo (Blob/File) → Blob JPEG.
-// On capture une image vers ~1 s (ou le début si la vidéo est courte).
+// On capture une image un peu APRÈS le début (beaucoup de films / clips
+// ouvrent sur du noir ou des titres). Deux fiabilisations par rapport à une
+// capture naïve :
+//   1. On attend que la frame soit VRAIMENT peinte avant de dessiner
+//      (`requestVideoFrameCallback` si dispo, sinon petit délai) — sans ça,
+//      `drawImage` juste après `seeked` produit souvent un canvas NOIR.
+//   2. On teste la luminosité : si l'image est quasi noire, on retente plus
+//      loin dans la vidéo (1 s → 2,5 s → 5 s → 9 s, bornés par la durée).
 export function vignetteVideo(blob) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(blob)
     const v = document.createElement('video')
-    v.muted = true; v.playsInline = true; v.preload = 'metadata'
+    v.muted = true; v.playsInline = true; v.preload = 'auto'
     let fait = false
     const finir = (fn, arg) => { if (!fait) { fait = true; clearTimeout(minuteur); URL.revokeObjectURL(url); fn(arg) } }
     // Délai de sécurité : certains formats (ex. .mov) ne déclenchent NI
-    // « loadedmetadata » NI « error » dans Chrome → sans ça, ça fige.
-    const minuteur = setTimeout(() => finir(reject, new Error('vidéo : délai vignette dépassé')), 12000)
-    v.onloadedmetadata = () => {
-      v.currentTime = Math.min(1, (v.duration || 2) / 2)
+    // « loadeddata » NI « error » dans Chrome → sans ça, ça fige.
+    const minuteur = setTimeout(() => finir(reject, new Error('vidéo : délai vignette dépassé')), 15000)
+
+    let essais = [], idx = 0, meilleur = null   // `meilleur` = dernier rendu si tout est noir
+    const seekProchain = () => {
+      if (idx >= essais.length) {
+        // On n'a trouvé que du noir : on garde quand même la dernière image
+        // (mieux qu'un échec → repli sur tuile neutre).
+        return finir(meilleur ? resolve : reject, meilleur || new Error('vidéo : image noire'))
+      }
+      try { v.currentTime = essais[idx++] } catch { finir(reject, new Error('vidéo : seek impossible')) }
     }
-    v.onseeked = async () => {
+    v.onloadeddata = () => {
+      const d = (v.duration && isFinite(v.duration)) ? v.duration : 0
+      const cands = d
+        ? [Math.min(1, d * 0.1), Math.min(2.5, d * 0.25), Math.min(5, d * 0.5), Math.min(9, d * 0.75)]
+        : [1, 2.5, 5]
+      essais = [...new Set(cands.map(t => Math.max(0, +(+t).toFixed(2))))]
+      seekProchain()
+    }
+    const capter = async () => {
       try {
-        const vign = await canvasVersBlob(v, v.videoWidth || 640, v.videoHeight || 360)
-        finir(resolve, vign)
+        const largeur = v.videoWidth || 640, hauteur = v.videoHeight || 360
+        const ratio = Math.min(1, TAILLE_VIGNETTE / Math.max(largeur, hauteur))
+        const w = Math.max(1, Math.round(largeur * ratio)), h = Math.max(1, Math.round(hauteur * ratio))
+        const c = document.createElement('canvas'); c.width = w; c.height = h
+        const ctx = c.getContext('2d'); ctx.drawImage(v, 0, 0, w, h)
+        const noir = estPresqueNoir(ctx, w, h)
+        const b = await new Promise(r => c.toBlob(x => r(x), 'image/jpeg', QUALITE))
+        if (b && !noir) return finir(resolve, b)   // image exploitable
+        if (b) meilleur = b                          // on la garde en dernier recours
+        seekProchain()                               // sinon on tente plus loin
       } catch (e) { finir(reject, e) }
+    }
+    v.onseeked = () => {
+      if (typeof v.requestVideoFrameCallback === 'function') v.requestVideoFrameCallback(() => capter())
+      else setTimeout(capter, 130)   // laisse le temps au rendu de la frame
     }
     v.onerror = () => finir(reject, new Error('vidéo illisible'))
     v.src = url
   })
+}
+
+// Vrai si l'image du canvas est quasi entièrement noire (film ouvrant sur du
+// noir, frame pas encore rendue…). Échantillonne 1 pixel sur ~40 pour rester
+// léger, calcule la luminance moyenne.
+function estPresqueNoir(ctx, w, h) {
+  try {
+    const { data } = ctx.getImageData(0, 0, w, h)
+    let somme = 0, n = 0
+    for (let i = 0; i < data.length; i += 4 * 40) {
+      somme += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]; n++
+    }
+    return n > 0 && somme / n < 16   // < ~6 % de luminance = quasi noir
+  } catch { return false }
 }
 
 // Vignette « couverture » pour un PDF (on ne rend pas la 1re page : tuile
