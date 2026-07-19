@@ -486,15 +486,16 @@ body {
 .dc-lecture-chevron { color: var(--encre-3); font-size: 13px; }
 .dc-lecture-corps { margin-top: 10px; }
 .dc-lecture-texte {
-  font-family: var(--serif); font-size: 17px; line-height: 1.75; color: var(--encre);
+  font-family: var(--serif); font-size: 18.5px; line-height: 1.72; color: var(--encre);
   overflow-wrap: anywhere; word-break: break-word;
 }
-/* Markdown de l'article : titres, paragraphes, listes, citations, gras. */
+/* Markdown de l'article : titres, paragraphes, listes, citations, gras.
+   Titres (dont les questions d'interview) en NOIR + gras, bien lisibles. */
 .dc-lecture-texte .ml-p { margin: 0 0 1em; }
-.dc-lecture-texte .ml-h { font-family: var(--serif); line-height: 1.3; margin: 1.3em 0 .5em; color: var(--encre); }
-.dc-lecture-texte .ml-h1 { font-size: 22px; font-weight: 700; }
-.dc-lecture-texte .ml-h2 { font-size: 19px; font-weight: 700; }
-.dc-lecture-texte .ml-h3 { font-size: 17px; font-weight: 600; color: var(--encre-2); }
+.dc-lecture-texte .ml-h { font-family: var(--serif); line-height: 1.3; margin: 1.3em 0 .5em; color: var(--encre); font-weight: 700; }
+.dc-lecture-texte .ml-h1 { font-size: 23px; }
+.dc-lecture-texte .ml-h2 { font-size: 20px; }
+.dc-lecture-texte .ml-h3 { font-size: 18.5px; }
 .dc-lecture-texte .ml-ul { margin: 0 0 1em; padding-left: 1.3em; }
 .dc-lecture-texte .ml-ul li { margin: .25em 0; }
 .dc-lecture-texte .ml-q {
