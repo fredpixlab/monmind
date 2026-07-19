@@ -326,6 +326,11 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
   const [chargeMedia, setChargeMedia] = useState(false)
   const [videoErreur, setVideoErreur] = useState(false)
   const videoRef = useRef(null)
+  // Panneau d'infos (tags / note / espaces) : FERMÉ par défaut sur desktop, il
+  // glisse depuis la droite quand on tire l'onglet. Sur mobile il reste sous le
+  // média (voir CSS) et cet état n'a aucun effet. L'état PERSISTE quand on
+  // navigue ← → : ouvert une fois, il reste ouvert sur les cartes suivantes.
+  const [panneauOuvert, setPanneauOuvert] = useState(false)
 
   // Image affichée : la complète si chargée, sinon la vignette / l'aperçu.
   // `vignetteSrc` est recalculée depuis la carte → la navigation ← → affiche
@@ -533,7 +538,8 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
          onTouchStart={surTouchStart} onTouchEnd={surTouchEnd}>
       <button className="detail-fermer" title="Fermer" onClick={fermer}>×</button>
 
-      <div className="detail-scene" onClick={e => e.stopPropagation()}>
+      <div className={'detail-scene' + (panneauOuvert ? ' panneau-ouvert' : '')}
+           onClick={e => e.stopPropagation()}>
         {/* Colonne gauche : le contenu */}
         <div className="detail-contenu">
           {carte.type === 'lien' && (
@@ -660,6 +666,18 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
           )}
         </div>
 
+        {/* Onglet : tire / referme le panneau d'infos (desktop). Masqué en
+            mobile, où le panneau coule déjà sous le média. */}
+        <button
+          className="detail-onglet"
+          onClick={() => setPanneauOuvert(o => !o)}
+          title={panneauOuvert ? 'Masquer les infos' : 'Tags, note & espaces'}
+          aria-label={panneauOuvert ? 'Masquer le panneau d’infos' : 'Afficher le panneau d’infos'}
+        >
+          <span className="detail-onglet-fleche">{panneauOuvert ? '›' : '‹'}</span>
+          <span className="detail-onglet-txt">Infos</span>
+        </button>
+
         {/* Colonne droite : le panneau d'infos */}
         <aside className="detail-panneau">
           <div className="dp-haut">
@@ -750,11 +768,13 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
 }
 
 // --- Composeur (ajout d'une carte) -------------------------------
-function Composeur({ fermer, onAjout }) {
+function Composeur({ fermer, onAjout, tousTags = [] }) {
   const [texte, setTexte] = useState('')
   const [image, setImage] = useState(null)   // image → carte image locale (+ OCR)
   const [media, setMedia] = useState(null)   // vidéo / PDF → média « à la demande » (Drive)
   const [apercu, setApercu] = useState(null)
+  const [tags, setTags] = useState([])       // tags attribués DÈS l'ajout
+  const [tagSaisie, setTagSaisie] = useState('')
   const [envoi, setEnvoi] = useState(false)  // envoi d'un média vers Drive en cours
   const [erreur, setErreur] = useState(null)
   const fichierRef = useRef(null)
@@ -782,20 +802,34 @@ function Composeur({ fermer, onAjout }) {
     const item = [...e.clipboardData.items].find(i => i.type.startsWith('image/'))
     if (item) { e.preventDefault(); choisirFichier(item.getAsFile()) }
   }
+  // Tags saisis à l'ajout : normalisés (minuscule) et dédoublonnés, comme dans
+  // le panneau de détail. `list` + `<datalist>` fournissent l'auto-complétion
+  // à partir des tags déjà existants.
+  function ajouterTagLocal(brut) {
+    const t = (brut ?? tagSaisie).trim().toLowerCase()
+    setTagSaisie('')
+    if (!t || tags.includes(t)) return
+    setTags([...tags, t])
+  }
+  function retirerTagLocal(t) { setTags(tags.filter(x => x !== t)) }
+
   const aMedia = !!(image || media)
   async function enregistrer() {
     if (envoi) return
     const propre = texte.trim()
     if (!propre && !aMedia) return
+    // Inclut un tag encore tapé dans le champ mais pas « validé » par Entrée.
+    const enAttente = tagSaisie.trim().toLowerCase()
+    const tagsFinal = enAttente && !tags.includes(enAttente) ? [...tags, enAttente] : tags
     if (image) {
-      const c = await ajouterCarte({ type: 'image', image, texte: propre })
+      const c = await ajouterCarte({ type: 'image', image, texte: propre, tags: tagsFinal })
       ocrEnFond(c.id, image)
     } else if (media) {
       // Vidéo / PDF → même plomberie que le glisser-déposer : vignette locale
       // + fichier complet envoyé dans Drive (chargé à la demande ensuite).
       setEnvoi(true)
       let r
-      try { r = await ajouterMediaDepuisFichier(media, { texte: propre }) }
+      try { r = await ajouterMediaDepuisFichier(media, { texte: propre, tags: tagsFinal }) }
       catch (e) { console.error('[composeur-media]', e); r = 'erreur' }
       setEnvoi(false)
       if (r === 'besoin-drive') {
@@ -807,9 +841,9 @@ function Composeur({ fermer, onAjout }) {
         return
       }
     } else if (estUneUrl(propre)) {
-      await ajouterCarte({ type: 'lien', url: propre, titre: '' })
+      await ajouterCarte({ type: 'lien', url: propre, titre: '', tags: tagsFinal })
     } else {
-      await ajouterCarte({ type: 'note', texte: propre })
+      await ajouterCarte({ type: 'note', texte: propre, tags: tagsFinal })
     }
     onAjout?.()
     fermer()
@@ -833,6 +867,31 @@ function Composeur({ fermer, onAjout }) {
         {apercu && media && <video className="apercu-image" src={apercu} controls playsInline muted />}
         {media && !apercu && <p className="apercu-fichier">📄 {media.name || 'Document'}</p>}
         {erreur && <p className="import-erreur">{erreur}</p>}
+
+        {/* Tags attribués dès l'ajout — auto-complétés par les tags existants. */}
+        <div className="composeur-tags">
+          {tags.map(t => (
+            <span key={t} className="tag-chip">
+              <span className="anneau" style={{ borderColor: couleurTag(t) }} />
+              {t}
+              <button title="Retirer" onClick={() => retirerTagLocal(t)}>×</button>
+            </span>
+          ))}
+          <input
+            className="tag-input" placeholder="+ tag" list="composeur-tags-connus"
+            value={tagSaisie}
+            onChange={e => setTagSaisie(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); ajouterTagLocal() }
+              if (e.key === 'Backspace' && !tagSaisie && tags.length) retirerTagLocal(tags[tags.length - 1])
+            }}
+            onBlur={() => ajouterTagLocal()}
+          />
+          <datalist id="composeur-tags-connus">
+            {tousTags.filter(t => !tags.includes(t)).map(t => <option key={t} value={t} />)}
+          </datalist>
+        </div>
+
         <div className="actions">
           <button className="bouton-second" onClick={() => fichierRef.current.click()}>
             Photo, vidéo, PDF
@@ -1834,7 +1893,7 @@ export default function App() {
       {/* ---- Bouton + ---- */}
       <button className="ajouter" title="Ajouter" onClick={() => setComposeurOuvert(true)}>+</button>
 
-      {composeurOuvert && <Composeur fermer={() => setComposeurOuvert(false)} onAjout={sync.planifier} />}
+      {composeurOuvert && <Composeur fermer={() => setComposeurOuvert(false)} onAjout={sync.planifier} tousTags={tousTags} />}
       {importOuvert && (
         <ImportMymind
           pret={['ok', 'pret', 'sync'].includes(sync.etat)}

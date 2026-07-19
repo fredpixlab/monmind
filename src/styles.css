@@ -396,6 +396,12 @@ body {
   background: hsl(228, 16%, 94%); color: var(--encre-2);
   font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+/* Tags attribués dès l'ajout (composeur) : mêmes puces que le panneau détail. */
+.composeur-tags {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--trait);
+}
+.composeur-tags .tag-input { width: auto; min-width: 96px; flex: 0 1 160px; }
 
 /* ---------- Import mymind ---------- */
 
@@ -583,6 +589,43 @@ body {
   display: flex; align-items: center; justify-content: center; transition: all .15s;
 }
 .dp-jeter:hover { background: hsl(6, 70%, 96%); color: hsl(6, 60%, 50%); border-color: hsl(6, 60%, 80%); }
+
+/* ---- Panneau d'infos repliable (desktop) : par défaut FERMÉ. Le panneau
+   devient un tiroir fixé à droite (hors flux → le contenu occupe toute la
+   largeur) ; on le fait glisser via l'onglet vertical accroché au bord.
+   Onglet masqué par défaut (mobile : le panneau coule déjà sous le média) ; la
+   media query desktop ci-dessous le réactive — d'où l'ordre : base AVANT. ---- */
+.detail-onglet { display: none; }
+@media (min-width: 821px) {
+  .detail-onglet { display: flex; }
+  .detail-panneau {
+    position: fixed; top: 4vh; right: 0; height: 92vh; z-index: 41;
+    border-radius: 16px 0 0 16px;
+    box-shadow: -12px 0 48px hsla(0, 0%, 0%, .28);
+    transform: translateX(calc(100% + 24px));
+    transition: transform .32s cubic-bezier(.4, 0, .2, 1);
+  }
+  .detail-scene.panneau-ouvert .detail-panneau { transform: translateX(0); }
+
+  /* Onglet : pastille verticale au bord droit ; ouvert, elle se cale sur le
+     bord gauche du tiroir et lui sert de poignée. */
+  .detail-onglet {
+    position: fixed; right: 0; top: 50%; transform: translateY(-50%);
+    z-index: 42; flex-direction: column; align-items: center; gap: 8px;
+    padding: 16px 9px; border: none; cursor: pointer;
+    background: hsla(228, 30%, 98%, .97); color: var(--encre-2);
+    border-radius: 12px 0 0 12px;
+    box-shadow: -6px 0 22px hsla(0, 0%, 0%, .22);
+    transition: right .32s cubic-bezier(.4, 0, .2, 1), color .15s, background .15s;
+  }
+  .detail-onglet:hover { color: var(--encre); background: #fff; }
+  .detail-scene.panneau-ouvert .detail-onglet { right: min(360px, 42vw); }
+  .detail-onglet-fleche { font-size: 18px; line-height: 1; font-weight: 700; }
+  .detail-onglet-txt {
+    writing-mode: vertical-rl; text-orientation: mixed;
+    font-size: 11px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+  }
+}
 
 /* ---- Vue détail sur mobile / écran étroit : mise en page VERTICALE façon
    mymind. Le média (ou la note / le lien) occupe le haut en grand, puis le
