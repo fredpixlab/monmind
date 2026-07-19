@@ -1327,6 +1327,10 @@ function VueStats({ contenu, tousTags, espaces, ocr, onOuvrir }) {
           </>
         )}
       </div>
+
+      {/* Tampon de version : figé au build (heure de Paris), injecté par Vite
+          (`__BUILD__`). Permet de vérifier qu'on a bien la dernière version. */}
+      <p className="stats-version">MonCoffre — version du {__BUILD__}</p>
     </>
   )
 }

@@ -884,6 +884,10 @@ body {
 }
 .stat-nb { font-size: 30px; font-weight: 700; color: var(--encre); line-height: 1; }
 .stat-lbl { margin-top: 6px; font-size: 13px; color: var(--encre-2); }
+.stats-version {
+  margin: 34px 8px 12px; padding-top: 18px; border-top: 1px solid var(--trait);
+  font-size: 12.5px; color: var(--encre-3); letter-spacing: .02em;
+}
 .stats-bloc { padding: 24px 8px 4px; }
 .stats-titre { font-family: var(--serif); font-style: italic; font-size: 24px; margin: 0 0 14px; color: var(--encre); }
 .stats-note { font-size: 14px; line-height: 1.6; color: var(--encre-2); margin: 0 0 12px; max-width: 720px; }

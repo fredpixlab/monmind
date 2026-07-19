@@ -2,10 +2,29 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Tampon de build (date + heure de Paris), figé au moment du `vite build`.
+// Injecté tel quel dans l'app via `define` (constante `__BUILD__`) → affiché
+// dans la vue Statistiques pour vérifier d'un coup d'œil qu'on a la dernière
+// version déployée. ⚠️ Comme cette valeur change à chaque build, le hash du
+// bundle n'est plus identique cloud/Mac/CI : on vérifie la fidélité par le
+// `shasum` des FICHIERS SOURCE, pas par le nom du bundle.
+function tamponBuild() {
+  const parts = new Intl.DateTimeFormat('fr-FR', {
+    timeZone: 'Europe/Paris',
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  }).formatToParts(new Date())
+  const g = t => (parts.find(p => p.type === t) || {}).value || ''
+  return `${g('day')}/${g('month')}/${g('year')} à ${g('hour')}h${g('minute')}`
+}
+
 // `base` correspond au nom du repo GitHub : l'app sera servie sur
 // https://fredpixlab.github.io/monmind/
 export default defineConfig({
   base: '/monmind/',
+  define: {
+    __BUILD__: JSON.stringify(tamponBuild())
+  },
   plugins: [
     react(),
     VitePWA({
