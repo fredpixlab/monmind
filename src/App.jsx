@@ -135,6 +135,47 @@ function apercuLien(url) {
   return yt ? `https://i.ytimg.com/vi/${yt}/hqdefault.jpg` : null
 }
 
+// --- Diagnostic : repérer les cartes « pas carrées » -------------------
+// Note dont le contenu se réduit à une image markdown (« ![]() » ou
+// « ![](…) ») sans vrai texte : artefact d'import mymind (l'image n'a pas
+// suivi). On l'affichera comme « image manquante » plutôt que ce charabia.
+const RE_MD_IMG = /!\[[^\]]*\]\([^)]*\)/
+function estNoteImageManquante(c) {
+  if (c.type !== 'note') return false
+  const t = (c.texte || '').trim()
+  return !!t && RE_MD_IMG.test(t) && t.replace(RE_MD_IMG, '').trim() === ''
+}
+// Carte sans rien d'affichable (ni texte, ni titre, ni lien, ni média).
+function estCarteVide(c) {
+  if (c.type === 'image' || c.type === 'video' || c.type === 'pdf') return false
+  return !(c.texte || '').trim() && !(c.titre || '').trim() &&
+         !(c.url || '').trim() && !c.apercu && !c.image && !c.vignette
+}
+// Statistiques + liste des cartes à revoir, calculées en mémoire.
+function calculerStats(contenu, tousTags, espaces, ocr) {
+  const parType = { image: 0, video: 0, note: 0, lien: 0, pdf: 0 }
+  const dom = {}
+  let yt = 0, tw = 0, social = 0, liensSansApercu = 0
+  const aRevoir = []
+  for (const c of contenu) {
+    if (parType[c.type] != null) parType[c.type]++
+    if (c.type === 'lien') {
+      const d = domaineDe(c.url || '')
+      if (d) dom[d] = (dom[d] || 0) + 1
+      if (idYouTube(c.url)) yt++
+      else if (/(^|\.)(twitter\.com|x\.com|t\.co)$/.test(d)) tw++
+      else if (/(instagram\.com|threads\.(net|com)|bsky\.app|mastodon)/.test(d)) social++
+      if (!c.apercu && !idYouTube(c.url)) liensSansApercu++
+    }
+    if (estNoteImageManquante(c) || estCarteVide(c)) aRevoir.push(c)
+  }
+  const topDom = Object.entries(dom).sort((a, b) => b[1] - a[1]).slice(0, 12)
+  return {
+    total: contenu.length, parType, yt, tw, social, liensSansApercu, topDom,
+    nbTags: tousTags.length, nbEspaces: espaces.length, ocr, aRevoir
+  }
+}
+
 // --- Une carte dans la mosaïque ----------------------------------
 // Pas de bouton de suppression ici : dans la grille, on ne veut qu'ouvrir la
 // carte (un × flottant façon « fermer » sur chaque vignette est déroutant et
@@ -175,7 +216,9 @@ function Carte({ carte, onOuvrir }) {
         )}
         {carte.type === 'note' && carte.texte && (
           <div className="contenu">
-            <p className="texte note-serif">{carte.texte}</p>
+            {estNoteImageManquante(carte)
+              ? <p className="note-manquante">Image non importée</p>
+              : <p className="texte note-serif">{carte.texte}</p>}
           </div>
         )}
       </article>
@@ -475,7 +518,9 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
           )}
           {carte.type === 'note' && (
             <div className="dc-carte dc-note">
-              <p className="dc-note-texte">{carte.texte}</p>
+              {estNoteImageManquante(carte)
+                ? <p className="note-manquante grand">Image non importée depuis mymind</p>
+                : <p className="dc-note-texte">{carte.texte}</p>}
             </div>
           )}
         </div>
@@ -1004,6 +1049,82 @@ function ImportMymind({ pret, brancher, fermer, onModif }) {
   )
 }
 
+// --- Vue Statistiques + diagnostic -------------------------------
+function VueStats({ contenu, tousTags, espaces, ocr, onOuvrir }) {
+  const s = useMemo(() => calculerStats(contenu, tousTags, espaces, ocr), [contenu, tousTags, espaces, ocr])
+  const tuiles = [
+    { n: s.total, l: 'cartes' },
+    { n: s.parType.image, l: 'images' },
+    { n: s.parType.video, l: 'vidéos' },
+    { n: s.parType.note, l: 'notes' },
+    { n: s.parType.lien, l: 'liens' },
+    { n: s.parType.pdf, l: 'PDF' },
+    { n: s.yt, l: 'YouTube' },
+    { n: s.tw, l: 'Twitter / X' },
+    { n: s.social, l: 'autres réseaux' },
+    { n: s.nbTags, l: 'tags' },
+    { n: s.nbEspaces, l: 'espaces' },
+    { n: `${s.ocr.faites} / ${s.ocr.total}`, l: 'images lues (OCR)' },
+  ]
+  const max = s.topDom.length ? s.topDom[0][1] : 1
+  return (
+    <>
+      <div className="entete-vue"><h1 className="titre-serif">Statistiques</h1></div>
+
+      <div className="stats-tuiles">
+        {tuiles.map((t, i) => (
+          <div className="stat-tuile" key={i}>
+            <div className="stat-nb">{t.n}</div>
+            <div className="stat-lbl">{t.l}</div>
+          </div>
+        ))}
+      </div>
+
+      {s.topDom.length > 0 && (
+        <div className="stats-bloc">
+          <h2 className="stats-titre">Sites les plus enregistrés</h2>
+          <div className="stats-domaines">
+            {s.topDom.map(([d, n]) => (
+              <div className="stat-dom" key={d}>
+                <span className="stat-dom-nom">{d}</span>
+                <span className="stat-dom-barre"><span style={{ width: (n / max * 100) + '%' }} /></span>
+                <span className="stat-dom-nb">{n}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="stats-bloc">
+        <h2 className="stats-titre">À revoir</h2>
+        <p className="stats-note">
+          <strong>{s.liensSansApercu}</strong> lien{s.liensSansApercu > 1 ? 's' : ''} sans image d'aperçu
+          (surtout Twitter / X). Ces sites bloquent la récupération d'une vignette côté navigateur —
+          une vraie prévisualisation demanderait un petit serveur. Les cartes restent lisibles (titre + texte).
+        </p>
+        {s.aRevoir.length === 0 ? (
+          <p className="stats-note">Aucune carte vide ou cassée. ✓</p>
+        ) : (
+          <>
+            <p className="stats-note">
+              <strong>{s.aRevoir.length}</strong> carte{s.aRevoir.length > 1 ? 's' : ''} vide{s.aRevoir.length > 1 ? 's' : ''}
+              {' '}ou dont l'image n'a pas été importée — clique pour l'ouvrir et la corriger ou la supprimer :
+            </p>
+            <div className="stats-revoir">
+              {s.aRevoir.map(c => (
+                <button className="revoir-item" key={c.id} onClick={() => onOuvrir({ carte: c })}>
+                  <span className="revoir-type">{c.type}</span>
+                  <span className="revoir-txt">{(c.titre || c.texte || c.url || '(vide)').slice(0, 70) || '(vide)'}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </>
+  )
+}
+
 // =================================================================
 export default function App() {
   const [modeExt] = useState(() => new URLSearchParams(window.location.search).get('via') === 'ext')
@@ -1288,6 +1409,7 @@ export default function App() {
         <div className="rail-marque">MonCoffre</div>
         <div className="rail-bas">
           <StatutSync etat={sync.etat} brancher={sync.brancher} lancer={sync.lancer} />
+          <button className="rail-bouton" title="Statistiques" onClick={() => setVue('stats')}>📊</button>
           <button className="rail-bouton rail-corbeille" title="Corbeille" onClick={() => setVue('corbeille')}>
             🗑{corbeille.length > 0 && <span className="rail-badge">{corbeille.length}</span>}
           </button>
@@ -1486,6 +1608,12 @@ export default function App() {
               </>
             )}
           </>
+        )}
+
+        {/* ====== VUE STATISTIQUES ====== */}
+        {vue === 'stats' && (
+          <VueStats contenu={contenu} tousTags={tousTags} espaces={espaces} ocr={ocr}
+                    onOuvrir={(o) => setOuverte(o)} />
         )}
       </div>
 

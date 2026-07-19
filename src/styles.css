@@ -748,6 +748,45 @@ body {
   .sync-compteur { left: 14px; bottom: calc(72px + env(safe-area-inset-bottom)); }
 }
 
+/* ---------- Note « image non importée » (artefact ![]() ) ---------- */
+.note-manquante { margin: 0; font-size: 14px; font-style: italic; color: var(--encre-3); }
+.note-manquante::before { content: '🖼️ '; font-style: normal; }
+.note-manquante.grand { font-size: 18px; }
+
+/* ---------- Vue Statistiques + diagnostic ---------- */
+.stats-tuiles {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 14px; padding: 4px 8px 8px;
+}
+.stat-tuile {
+  background: var(--carte); border: 1px solid var(--trait); border-radius: 14px;
+  padding: 18px 18px 16px; box-shadow: var(--ombre-sm);
+}
+.stat-nb { font-size: 30px; font-weight: 700; color: var(--encre); line-height: 1; }
+.stat-lbl { margin-top: 6px; font-size: 13px; color: var(--encre-2); }
+.stats-bloc { padding: 24px 8px 4px; }
+.stats-titre { font-family: var(--serif); font-style: italic; font-size: 24px; margin: 0 0 14px; color: var(--encre); }
+.stats-note { font-size: 14px; line-height: 1.6; color: var(--encre-2); margin: 0 0 12px; max-width: 720px; }
+.stats-note strong { color: var(--encre); }
+.stats-domaines { display: flex; flex-direction: column; gap: 8px; max-width: 640px; }
+.stat-dom { display: grid; grid-template-columns: 150px 1fr 40px; align-items: center; gap: 12px; font-size: 13px; }
+.stat-dom-nom { color: var(--encre); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stat-dom-barre { height: 8px; background: hsl(228, 16%, 90%); border-radius: 999px; overflow: hidden; }
+.stat-dom-barre span { display: block; height: 100%; background: var(--degrade); border-radius: 999px; }
+.stat-dom-nb { text-align: right; color: var(--encre-2); font-weight: 600; }
+.stats-revoir { display: flex; flex-direction: column; gap: 8px; max-width: 720px; }
+.revoir-item {
+  display: flex; align-items: center; gap: 12px; text-align: left; cursor: pointer; width: 100%;
+  background: var(--carte); border: 1px solid var(--trait); border-radius: 10px; padding: 10px 14px;
+  transition: box-shadow .15s;
+}
+.revoir-item:hover { box-shadow: var(--ombre-sm); }
+.revoir-type {
+  flex: none; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--encre-3);
+  background: hsla(222, 20%, 50%, .1); border-radius: 999px; padding: 3px 9px;
+}
+.revoir-txt { color: var(--encre); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* ---------- Badge corbeille (rail) ---------- */
 .rail-corbeille { position: relative; }
 .rail-badge {
