@@ -90,16 +90,23 @@ function creerCarteLien(cap) {
 // la vignette (cas des médias importés « à la demande »).
 function useSrcImage(carte) {
   const [src, setSrc] = useState(null)
+  // ⚠️ Dexie/`useLiveQuery` renvoie une NOUVELLE instance de Blob à CHAQUE
+  // émission (donc à chaque édition de N'IMPORTE quelle carte). Si on dépend de
+  // l'identité du blob, on révoque puis recrée l'URL à chaque fois → un instant
+  // l'`<img>` pointe sur une URL révoquée = vignette cassée jusqu'au rechargement.
+  // On dépend donc d'une CLÉ STABLE (id + taille du blob) : éditer les tags/notes
+  // ne change pas la taille → l'URL de l'image est conservée telle quelle.
+  const cle = (carte?.id || '') + ':' + (carte?.image?.size || 0) + ':' + (carte?.vignette?.size || 0)
   useEffect(() => {
     const blob = carte?.image || carte?.vignette
-    if (blob) {
-      const u = URL.createObjectURL(blob)
-      setSrc(u)
-      return () => URL.revokeObjectURL(u)
-    } else {
-      setSrc(null)
-    }
-  }, [carte?.image, carte?.vignette])
+    if (!blob) { setSrc(null); return }
+    const u = URL.createObjectURL(blob)
+    setSrc(u)
+    // Révocation différée : l'ancienne URL reste valide le temps que le nouveau
+    // rendu s'affiche, jamais d'image cassée pendant la transition.
+    return () => { setTimeout(() => URL.revokeObjectURL(u), 2000) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cle])
   return src
 }
 
