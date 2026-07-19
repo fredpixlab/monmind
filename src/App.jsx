@@ -1528,8 +1528,8 @@ export default function App() {
               )}
               {!recherche && (
                 <p className="hero-astuce">
-                  Astuce : <code>#tag</code> cherche un tag précis (ex. <code>#recipe</code>).
-                  Les cartes <code>#private</code> ne s'affichent qu'ainsi.
+                  Astuce : <code>#tag</code> cherche un tag précis (ex. <code>#recipe</code>, <code>#ia</code>) —
+                  plutôt que le mot où qu'il soit dans le contenu.
                 </p>
               )}
             </div>
