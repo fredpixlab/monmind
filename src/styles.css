@@ -456,6 +456,12 @@ body {
   color: hsl(255, 45%, 55%); text-decoration: none; }
 .dc-source:hover { text-decoration: underline; }
 .dc-image { display: block; width: 100%; border-radius: 12px; margin: 4px 0 22px; box-shadow: var(--ombre-sm); }
+/* Lecteur YouTube intégré (lien) : cadre 16/9, l'iframe le remplit. */
+.dc-yt { position: relative; width: 100%; aspect-ratio: 16 / 9; margin: 4px 0 22px;
+  border-radius: 12px; overflow: hidden; background: #000; box-shadow: var(--ombre-sm); }
+.dc-yt iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+.dc-yt-poster { cursor: pointer; }
+.dc-yt-poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .dc-texte { font-size: 16.5px; line-height: 1.7; color: var(--encre); white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
 /* `safe center` : centre les notes courtes, MAIS bascule en haut-de-page dès
    que le texte dépasse la hauteur — sinon le centrage rend le début du texte

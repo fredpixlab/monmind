@@ -210,6 +210,9 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
   const vignetteSrc = useSrcImage(carte)
   const image = pleinSrc || src || vignetteSrc || (carte.type === 'lien' ? (carte.apercu || apercuLien(carte.url)) : null)
   const aMediaDrive = !!carte.driveMediaId
+  // Lien YouTube : on peut lire la vidéo directement dans la carte (embed).
+  const ytId = carte.type === 'lien' ? idYouTube(carte.url) : null
+  const [lireYt, setLireYt] = useState(false)
 
   useEffect(() => {
     const surTouche = e => { if (e.key === 'Escape') fermer() }
@@ -395,8 +398,25 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
                   {domaineDe(carte.url)} ↗
                 </a>
               )}
-              {image && <img className="dc-image" src={image} alt=""
-                             onError={e => { e.currentTarget.style.display = 'none' }} />}
+              {ytId ? (
+                lireYt ? (
+                  <div className="dc-yt">
+                    <iframe
+                      src={`https://www.youtube.com/embed/${ytId}?autoplay=1&rel=0`}
+                      title="Lecteur YouTube" allowFullScreen
+                      allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+                    />
+                  </div>
+                ) : (
+                  <div className="dc-yt dc-yt-poster" onClick={() => setLireYt(true)}>
+                    {image && <img src={image} alt="" onError={e => { e.currentTarget.style.display = 'none' }} />}
+                    <button className="play-badge grand" title="Lire la vidéo">▶</button>
+                  </div>
+                )
+              ) : (
+                image && <img className="dc-image" src={image} alt=""
+                              onError={e => { e.currentTarget.style.display = 'none' }} />
+              )}
               {carte.texte && <div className="dc-texte">{carte.texte}</div>}
             </div>
           )}
@@ -707,10 +727,22 @@ function useSync() {
     // Garde le jeton frais en tâche de fond (toutes les 2 min) pour qu'aucun
     // rafraîchissement Google n'apparaisse pendant l'ouverture d'une carte.
     const gardeJeton = setInterval(() => { rafraichirJeton().catch(() => {}) }, 120000)
-    const intervalle = setInterval(lancer, 60000)
-    const surFocus = () => lancer()
-    window.addEventListener('focus', surFocus)
-    return () => { clearInterval(intervalle); clearInterval(gardeJeton); window.removeEventListener('focus', surFocus) }
+    // Synchro périodique : quand l'app est VISIBLE, on rafraîchit souvent (30 s)
+    // pour que les cartes ajoutées sur un autre appareil (ex. une vidéo depuis
+    // l'iPhone) apparaissent toutes seules sur le bureau, sans geste. Quand
+    // l'app est cachée, on ne poll pas (batterie / quota) : le retour à l'écran
+    // déclenche une synchro immédiate via `visibilitychange` ci-dessous.
+    const intervalle = setInterval(() => {
+      if (document.visibilityState === 'visible') lancer()
+    }, 30000)
+    const surRetour = () => { if (document.visibilityState === 'visible') lancer() }
+    window.addEventListener('focus', surRetour)
+    document.addEventListener('visibilitychange', surRetour)
+    return () => {
+      clearInterval(intervalle); clearInterval(gardeJeton)
+      window.removeEventListener('focus', surRetour)
+      document.removeEventListener('visibilitychange', surRetour)
+    }
   }, [lancer])
 
   const brancher = useCallback(async () => {
