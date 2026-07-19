@@ -277,6 +277,29 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
   const ytId = carte.type === 'lien' ? idYouTube(carte.url) : null
   const [lireYt, setLireYt] = useState(false)
 
+  // Mode « Lecture » : capture hors-ligne du contenu d'un article (via le
+  // backend /lire). Le texte est rangé dans la carte (champ `article`) et
+  // synchronisé par Drive → il reste lisible même si la page d'origine meurt.
+  const [captureEtat, setCaptureEtat] = useState('idle')  // idle | charge | erreur
+  const [lectureOuverte, setLectureOuverte] = useState(false)
+  const peutCapturer = carte.type === 'lien' && carte.url && !ytId && API_BASE
+  async function capturerArticle() {
+    if (!peutCapturer) return
+    setCaptureEtat('charge')
+    try {
+      const r = await fetch(`${API_BASE}/lire?url=${encodeURIComponent(carte.url)}`)
+      const j = await r.json()
+      if (!j || j.erreur || !j.texte) { setCaptureEtat('erreur'); return }
+      const maj = { article: j.texte, articleLe: Date.now() }
+      if (!(carte.titre || '').trim() && j.titre) maj.titre = j.titre
+      await majCarte(carte.id, maj)
+      setCaptureEtat('idle'); setLectureOuverte(true)
+      onModif && onModif()
+    } catch { setCaptureEtat('erreur') }
+  }
+  // Réinitialise l'affichage « Lecture » quand on navigue vers une autre carte.
+  useEffect(() => { setLectureOuverte(false); setCaptureEtat('idle') }, [carte.id])
+
   useEffect(() => {
     const surTouche = e => { if (e.key === 'Escape') fermer() }
     window.addEventListener('keydown', surTouche)
@@ -481,6 +504,38 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
                               onError={e => { e.currentTarget.style.display = 'none' }} />
               )}
               {carte.texte && <div className="dc-texte">{carte.texte}</div>}
+
+              {peutCapturer && (
+                <div className="dc-lecture">
+                  {carte.article ? (
+                    <>
+                      <button className="dc-lecture-titre" onClick={() => setLectureOuverte(o => !o)}>
+                        <span>📖 Lecture</span>
+                        <span className="dc-lecture-chevron">{lectureOuverte ? '▾' : '▸'}</span>
+                      </button>
+                      {lectureOuverte && (
+                        <div className="dc-lecture-corps">
+                          <div className="dc-lecture-texte">{carte.article}</div>
+                          <div className="dc-lecture-pied">
+                            Capturé {carte.articleLe ? dateRelative(carte.articleLe) : ''}
+                            <button className="dc-lecture-maj" onClick={capturerArticle}
+                                    disabled={captureEtat === 'charge'}>
+                              {captureEtat === 'charge' ? 'Capture…' : 'Actualiser'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <button className="dc-lecture-capturer" onClick={capturerArticle}
+                            disabled={captureEtat === 'charge'}>
+                      {captureEtat === 'charge' ? 'Capture en cours…'
+                        : captureEtat === 'erreur' ? 'Article illisible — réessayer'
+                        : '📖 Capturer l’article (lecture hors-ligne)'}
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
           {carte.type === 'image' && image && (

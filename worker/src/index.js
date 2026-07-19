@@ -32,6 +32,7 @@ export default {
     const url = new URL(request.url)
     if (request.method === 'OPTIONS') return cors(new Response(null, { status: 204 }))
     if (url.pathname === '/preview') return preview(url, ctx)
+    if (url.pathname === '/lire') return lire(url, ctx)
     if (url.pathname === '/login') return login(url, env)
     if (url.pathname === '/callback') return callback(url, env)
     if (url.pathname === '/token' && request.method === 'POST') return token(request, env)
@@ -143,6 +144,94 @@ async function twitter(cible, d) {
   if (!j) return { erreur: 'oembed illisible', dom: d }
   const texte = decode((j.html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())
   return { image: '', titre: (j.author_name || '').slice(0, 120), texte: texte.slice(0, 400), dom: d }
+}
+
+// ================= LECTURE : article hors-ligne =================
+// GET /lire?url=<lien> → { titre, texte, longueur, dom, erreur? }
+// Extrait le contenu LISIBLE de la page (mode « Lecture » façon Readability) :
+// titre + corps de l'article nettoyé (sans menus, pub, scripts). L'app le range
+// dans la carte → disponible hors connexion, et survit si la page disparaît.
+async function lire(reqUrl, ctx) {
+  const cible = reqUrl.searchParams.get('url')
+  if (!cible || !/^https?:\/\//i.test(cible)) return cors(json({ erreur: 'url invalide' }, 400))
+  const cache = caches.default
+  const key = new Request('https://moncoffre-cache.local/lire?u=' + encodeURIComponent(cible))
+  const cached = await cache.match(key)
+  if (cached) return cors(cached)
+  let data
+  try { data = await extraireArticle(cible) }
+  catch (e) { data = { erreur: 'illisible', dom: domaine(cible) } }
+  const resp = new Response(JSON.stringify(data), {
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'public, max-age=' + (data && data.erreur ? 3600 : 604800)
+    }
+  })
+  ctx.waitUntil(cache.put(key, resp.clone()))
+  return cors(resp)
+}
+
+// Extraction en STREAMING via HTMLRewriter (parseur Rust natif de Cloudflare) :
+// quelques ms de CPU au lieu de ~90 ms pour Readability+DOM — indispensable pour
+// tenir sous la limite de 10 ms CPU du plan Workers gratuit. Heuristique : on
+// garde le texte des blocs de contenu (p, titres, listes, citations) et on ignore
+// les zones de « chrome » (nav, header, footer, aside, scripts, formulaires…).
+async function extraireArticle(cible) {
+  const d = domaine(cible)
+  const ctrl = new AbortController()
+  const minuteur = setTimeout(() => ctrl.abort(), 12000)
+  let r
+  try {
+    r = await fetch(cible, { headers: { 'User-Agent': UA, Accept: 'text/html,application/xhtml+xml' }, redirect: 'follow', signal: ctrl.signal })
+  } finally { clearTimeout(minuteur) }
+  if (!r.ok) return { erreur: 'http ' + r.status, dom: d }
+  const ct = (r.headers.get('content-type') || '')
+  if (!/text\/html|xml/i.test(ct)) return { erreur: 'pas du HTML', dom: d }
+
+  // État partagé entre les gestionnaires (le flux est traité dans l'ordre du doc).
+  const S = { saut: 0, bloc: 0, dansTitre: false, morceaux: [], titre: '', ogTitre: '' }
+  const SAUT = 'script,style,noscript,nav,header,footer,aside,form,svg,button,figure,figcaption,label,select,template,iframe,object'
+  const BLOCS = 'p,h1,h2,h3,h4,h5,h6,li,blockquote,pre,dd'
+  const rw = new HTMLRewriter()
+    .on(SAUT, { element(el) { S.saut++; el.onEndTag(() => { S.saut-- }) } })
+    .on('title', { element(el) { S.dansTitre = true; el.onEndTag(() => { S.dansTitre = false }) } })
+    .on('meta', {
+      element(el) {
+        const k = el.getAttribute('property') || el.getAttribute('name')
+        if (k === 'og:title' && !S.ogTitre) { const c = el.getAttribute('content'); if (c) S.ogTitre = c }
+      }
+    })
+    .on(BLOCS, {
+      element(el) {
+        if (S.saut === 0) S.morceaux.push(el.tagName === 'li' ? '\n• ' : '\n\n')
+        S.bloc++; el.onEndTag(() => { S.bloc-- })
+      }
+    })
+    .onDocument({
+      text(t) {
+        if (!t.text) return
+        if (S.dansTitre) { S.titre += t.text; return }
+        if (S.saut === 0 && S.bloc > 0) S.morceaux.push(t.text)
+      }
+    })
+
+  // Consommer entièrement le flux transformé (déclenche tous les gestionnaires).
+  await rw.transform(r).arrayBuffer()
+
+  const texte = nettoyerTexte(S.morceaux).slice(0, 60000)
+  if (texte.length < 120) return { erreur: 'article trop court', dom: d }
+  const titre = decode((S.ogTitre || S.titre || '').replace(/\s+/g, ' ').trim()).slice(0, 300)
+  return { titre, texte, longueur: texte.length, dom: d }
+}
+
+// Assemble les morceaux collectés en texte lisible (paragraphes préservés).
+function nettoyerTexte(morceaux) {
+  return decode(morceaux.join(''))
+    .replace(/\r/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
 // ================= PHASE B : connexion Drive =================

@@ -460,18 +460,32 @@ function serialiserMd(carte, nomImage) {
     distant: carte.distant ? 1 : 0,
     mediaExt: carte.mediaExt || '',
     vignette: carte.vignetteNom || '',
-    source: carte.source || '', sourceId: carte.sourceId || ''
+    source: carte.source || '', sourceId: carte.sourceId || '',
+    articleLe: carte.articleLe || 0   // date de capture du « Lecture » (0 = aucun)
   }
-  return `---\n${JSON.stringify(meta)}\n---\n${carte.texte || ''}`
+  // L'article capturé (mode « Lecture ») est rangé dans le corps du .md, après
+  // un séparateur : ainsi le texte lisible vit EN CLAIR dans Drive et survit si
+  // la page d'origine disparaît. Le corps normal (note libre) reste en premier.
+  let corps = carte.texte || ''
+  if (carte.article) corps += MARQUE_ARTICLE + carte.article
+  return `---\n${JSON.stringify(meta)}\n---\n${corps}`
 }
+
+const MARQUE_ARTICLE = '\n\n===MONCOFFRE-ARTICLE===\n'
 
 function parserMd(contenu) {
   if (!contenu.startsWith('---\n')) return null
   const fin = contenu.indexOf('\n---\n', 4)
   if (fin === -1) return null
   const meta = JSON.parse(contenu.slice(4, fin))
-  const texte = contenu.slice(fin + 5)
-  return { meta, texte }
+  let texte = contenu.slice(fin + 5)
+  let article = ''
+  const iSep = texte.indexOf(MARQUE_ARTICLE)
+  if (iSep !== -1) {
+    article = texte.slice(iSep + MARQUE_ARTICLE.length)
+    texte = texte.slice(0, iSep)
+  }
+  return { meta, texte, article }
 }
 
 // ---- La synchronisation complète --------------------------------
@@ -656,7 +670,7 @@ async function recevoirCarte(id, dist) {
   const contenu = await telechargerTexte(dist.md.id)
   const parsed = parserMd(contenu)
   if (!parsed) return
-  const { meta, texte } = parsed
+  const { meta, texte, article } = parsed
 
   const base = {
     id,
@@ -665,6 +679,8 @@ async function recevoirCarte(id, dist) {
     url: meta.url || '',
     apercu: meta.apercu || '',
     texte,
+    article: article || '',
+    articleLe: meta.articleLe || 0,
     note: meta.note || '',
     tags: meta.tags || [],
     espaces: meta.espaces || [],

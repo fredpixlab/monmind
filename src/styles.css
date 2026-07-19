@@ -468,6 +468,34 @@ body {
 .dc-yt-poster { cursor: pointer; }
 .dc-yt-poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .dc-texte { font-size: 16.5px; line-height: 1.7; color: var(--encre); white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+
+/* ---------- Mode « Lecture » (article capturé hors-ligne) ---------- */
+.dc-lecture { margin-top: 18px; border-top: 1px solid var(--trait); padding-top: 14px; }
+.dc-lecture-capturer {
+  width: 100%; padding: 11px 14px; border: 1px solid var(--trait); border-radius: 10px;
+  background: var(--carte); color: var(--encre-2); font-size: 14.5px; cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.dc-lecture-capturer:hover:not(:disabled) { color: var(--encre); background: hsla(222, 20%, 50%, .07); }
+.dc-lecture-capturer:disabled { opacity: .6; cursor: default; }
+.dc-lecture-titre {
+  display: flex; align-items: center; justify-content: space-between; width: 100%;
+  padding: 6px 2px; background: none; border: none; cursor: pointer;
+  font-size: 15px; font-weight: 600; color: var(--encre);
+}
+.dc-lecture-chevron { color: var(--encre-3); font-size: 13px; }
+.dc-lecture-corps { margin-top: 10px; }
+.dc-lecture-texte {
+  font-family: var(--serif); font-size: 17px; line-height: 1.75; color: var(--encre);
+  white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word;
+}
+.dc-lecture-pied {
+  margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--trait);
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 12.5px; color: var(--encre-3);
+}
+.dc-lecture-maj { background: none; border: none; color: var(--encre-2); font-size: 12.5px; cursor: pointer; text-decoration: underline; }
+.dc-lecture-maj:disabled { opacity: .6; cursor: default; }
 /* `safe center` : centre les notes courtes, MAIS bascule en haut-de-page dès
    que le texte dépasse la hauteur — sinon le centrage rend le début du texte
    inatteignable au défilement (piège flexbox classique). */
