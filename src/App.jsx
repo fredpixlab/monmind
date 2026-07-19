@@ -136,7 +136,11 @@ function apercuLien(url) {
 }
 
 // --- Une carte dans la mosaïque ----------------------------------
-function Carte({ carte, onOuvrir, onModif, onSupprimer }) {
+// Pas de bouton de suppression ici : dans la grille, on ne veut qu'ouvrir la
+// carte (un × flottant façon « fermer » sur chaque vignette est déroutant et
+// risqué — suppression trop facile). La suppression se fait dans la carte
+// OUVERTE (vue détail, bouton 🗑), comme sur mymind.
+function Carte({ carte, onOuvrir }) {
   const src = useSrcImage(carte)
   const apercu = carte.type === 'lien' ? (carte.apercu || apercuLien(carte.url)) : null
 
@@ -174,12 +178,6 @@ function Carte({ carte, onOuvrir, onModif, onSupprimer }) {
             <p className="texte note-serif">{carte.texte}</p>
           </div>
         )}
-
-        <button
-          className="supprimer"
-          title="Supprimer"
-          onClick={e => { e.stopPropagation(); onSupprimer ? onSupprimer(carte) : supprimerCarte(carte.id).then(onModif) }}
-        >×</button>
       </article>
       {legende && <p className="legende">{legende}</p>}
     </div>
@@ -187,7 +185,7 @@ function Carte({ carte, onOuvrir, onModif, onSupprimer }) {
 }
 
 // --- Vue DÉTAIL plein écran (façon mymind) -----------------------
-function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSupprimer }) {
+function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSupprimer, onNaviguer }) {
   const [tags, setTags] = useState(carte.tags || [])
   const [nouveauTag, setNouveauTag] = useState('')
   const [ajoutTag, setAjoutTag] = useState(false)
@@ -218,6 +216,28 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
     window.addEventListener('keydown', surTouche)
     return () => window.removeEventListener('keydown', surTouche)
   }, [fermer])
+
+  // Navigation au SWIPE (mobile) : un glissement horizontal passe à la carte
+  // précédente / suivante — l'équivalent tactile des flèches ← → du clavier,
+  // puisqu'il n'y a pas de flèches sur téléphone. On distingue un vrai swipe
+  // horizontal d'un défilement vertical (le panneau se lit en scrollant) en
+  // exigeant que le déplacement en X domine nettement celui en Y.
+  const toucheDebut = useRef(null)
+  function surTouchStart(e) {
+    if (e.touches.length !== 1) { toucheDebut.current = null; return }
+    const t = e.touches[0]
+    toucheDebut.current = { x: t.clientX, y: t.clientY }
+  }
+  function surTouchEnd(e) {
+    const d = toucheDebut.current
+    toucheDebut.current = null
+    if (!d || !onNaviguer) return
+    const t = e.changedTouches[0]
+    const dx = t.clientX - d.x, dy = t.clientY - d.y
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.4) {
+      onNaviguer(dx < 0 ? 1 : -1)   // glisser vers la gauche = carte suivante
+    }
+  }
 
   // Média « à la demande » : pour une image importée, on va chercher le
   // fichier complet dans Drive dès l'ouverture (la vignette s'affiche en
@@ -360,7 +380,8 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
     : carte.type === 'video' ? 'Vidéo' : carte.type === 'pdf' ? 'PDF' : (domaineDe(carte.url) || 'Sans titre')
 
   return (
-    <div className="detail-voile" style={{ background: fond }} onClick={fermer}>
+    <div className="detail-voile" style={{ background: fond }} onClick={fermer}
+         onTouchStart={surTouchStart} onTouchEnd={surTouchEnd}>
       <button className="detail-fermer" title="Fermer" onClick={fermer}>×</button>
 
       <div className="detail-scene" onClick={e => e.stopPropagation()}>
@@ -599,13 +620,27 @@ function Composeur({ fermer, onAjout }) {
 // --- Synchronisation Drive ---------------------------------------
 function useSync() {
   const [etat, setEtat] = useState('inconnu')
+  const [progression, setProgression] = useState(null) // { recues, total } — gros téléchargement en cours
   const timer = useRef(null)
+  const dernierTick = useRef(0)
+
+  // Compteur de téléchargement : on limite la fréquence des mises à jour
+  // (~toutes les 300 ms) pour ne pas re-rendre l'app à chaque carte reçue,
+  // mais on force l'affichage du tout dernier « X / X ».
+  const surProgression = useCallback((p) => {
+    if (!p || !p.total) { setProgression(null); return }
+    const now = Date.now()
+    if (p.recues >= p.total || now - dernierTick.current > 300) {
+      dernierTick.current = now
+      setProgression({ recues: p.recues, total: p.total })
+    }
+  }, [])
 
   const lancer = useCallback(async () => {
     if (!sync_configuree()) return
     setEtat('sync')
     try {
-      await synchroniser()
+      await synchroniser(surProgression)
       setEtat('ok')
     } catch (e) {
       console.error('[sync]', e)
@@ -615,8 +650,10 @@ function useSync() {
       } else {
         setEtat('erreur')
       }
+    } finally {
+      setProgression(null)
     }
-  }, [])
+  }, [surProgression])
 
   const planifier = useCallback(() => {
     if (!sync_configuree()) return
@@ -646,7 +683,7 @@ function useSync() {
     catch (e) { console.error(e); setEtat('erreur') }
   }, [lancer])
 
-  return { etat, brancher, planifier, lancer }
+  return { etat, brancher, planifier, lancer, progression }
 }
 
 function StatutSync({ etat, brancher, lancer }) {
@@ -1106,27 +1143,32 @@ export default function App() {
     if (espaceActif && !espaces.some(e => e.id === espaceActif)) setEspaceActif(null)
   }, [espaces, espaceActif])
 
-  // Navigation clavier dans la carte ouverte : ← / → passent à la carte
-  // précédente / suivante (dans l'ordre affiché), façon mymind. Ignoré quand
-  // on tape dans un champ (titre, note, tag) pour ne pas gêner l'édition.
+  // Passe à la carte précédente / suivante dans l'ordre affiché (façon mymind).
+  // Partagé par les flèches ← → du clavier (desktop) ET le swipe (mobile).
+  const naviguer = useCallback(delta => {
+    if (!cartes || !cartes.length) return
+    setOuverte(o => {
+      if (!o) return o
+      const i = cartes.findIndex(c => c.id === o.carte.id)
+      if (i < 0) return o
+      const j = i + delta
+      return (j >= 0 && j < cartes.length) ? { carte: cartes[j] } : o
+    })
+  }, [cartes])
+
+  // Navigation clavier dans la carte ouverte : ← / →. Ignoré quand on tape
+  // dans un champ (titre, note, tag) pour ne pas gêner l'édition.
   useEffect(() => {
     if (!ouverte) return
-    const nav = delta => {
-      if (!cartes || !cartes.length) return
-      const i = cartes.findIndex(c => c.id === ouverte.carte.id)
-      if (i < 0) return
-      const j = i + delta
-      if (j >= 0 && j < cartes.length) setOuverte({ carte: cartes[j] })
-    }
     const surTouche = e => {
       const t = e.target
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
-      if (e.key === 'ArrowRight') { e.preventDefault(); nav(1) }
-      else if (e.key === 'ArrowLeft') { e.preventDefault(); nav(-1) }
+      if (e.key === 'ArrowRight') { e.preventDefault(); naviguer(1) }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); naviguer(-1) }
     }
     window.addEventListener('keydown', surTouche)
     return () => window.removeEventListener('keydown', surTouche)
-  }, [ouverte, cartes])
+  }, [ouverte, naviguer])
 
   async function validerNouvelEspace() {
     const nom = nomEspace.trim()
@@ -1272,9 +1314,7 @@ export default function App() {
                 <div className="grille-col" key={i}>
                   {col.map(c => (
                     <Carte key={c.id} carte={c}
-                           onOuvrir={(carte, src) => setOuverte({ carte, src })}
-                           onModif={sync.planifier}
-                           onSupprimer={demanderSuppression} />
+                           onOuvrir={(carte, src) => setOuverte({ carte, src })} />
                   ))}
                 </div>
               ))}
@@ -1404,6 +1444,7 @@ export default function App() {
           fermer={() => setOuverte(null)}
           onModif={sync.planifier}
           onSupprimer={demanderSuppression}
+          onNaviguer={naviguer}
         />
       )}
       {capture && (
@@ -1432,6 +1473,12 @@ export default function App() {
       )}
       {depotMsg && (
         <div className="toast-annul depot-toast"><span>{depotMsg}</span></div>
+      )}
+      {sync.progression && sync.progression.recues < sync.progression.total && (
+        <div className="sync-compteur" title="Cartes en cours de téléchargement depuis Google Drive">
+          <span className="sync-compteur-point" />
+          {sync.progression.recues} / {sync.progression.total}
+        </div>
       )}
     </div>
   )

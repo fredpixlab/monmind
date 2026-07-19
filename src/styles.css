@@ -246,15 +246,6 @@ body {
 }
 .bouton-lien:hover { opacity: 1; }
 
-.carte .supprimer {
-  position: absolute; top: 8px; right: 8px;
-  width: 28px; height: 28px; border: none; border-radius: 50%;
-  background: hsla(222, 20%, 12%, .55); color: white;
-  font-size: 14px; line-height: 1; cursor: pointer;
-  opacity: 0; transition: opacity .2s; backdrop-filter: blur(4px);
-}
-.carte:hover .supprimer { opacity: 1; }
-
 /* ---------- Entête des vues Espaces / Serendipity ---------- */
 
 .entete-vue {
@@ -535,10 +526,52 @@ body {
 }
 .dp-jeter:hover { background: hsl(6, 70%, 96%); color: hsl(6, 60%, 50%); border-color: hsl(6, 60%, 80%); }
 
+/* ---- Vue détail sur mobile / écran étroit : mise en page VERTICALE façon
+   mymind. Le média (ou la note / le lien) occupe le haut en grand, puis le
+   panneau (titre, date, tags, note, espaces) COULE en dessous et se lit en
+   faisant défiler toute la page. On donne le maximum de largeur au contenu :
+   le voile lui-même défile, sans marges latérales. ---- */
 @media (max-width: 820px) {
-  .detail-scene { flex-direction: column; align-items: stretch; overflow-y: auto; }
-  .detail-panneau { width: 100%; max-width: none; }
-  .detail-contenu { max-height: 60vh; }
+  .detail-voile {
+    align-items: stretch; justify-content: flex-start;
+    padding: 0; gap: 0;
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
+  }
+  .detail-scene {
+    flex-direction: column; align-items: stretch;
+    width: 100%; max-width: none; max-height: none;
+    gap: 0; min-height: 100%;
+    padding: calc(env(safe-area-inset-top) + 14px) 0 calc(env(safe-area-inset-bottom) + 28px);
+  }
+
+  /* Contenu (média) : plein cadre en haut, bien mis en valeur. */
+  .detail-contenu {
+    max-height: none; padding: 6px 12px 2px;
+    align-items: flex-start; justify-content: center;
+  }
+  .dc-image-nue, .dc-video { max-height: 74vh; width: auto; max-width: 100%; }
+  .dc-image-enveloppe { width: auto; max-width: 100%; }
+  /* Notes / liens : la carte de texte coule dans la page (pas de scroll interne). */
+  .dc-carte { max-height: none; overflow: visible; padding: 26px 22px; }
+  .dc-note { display: block; }
+
+  /* Panneau d'infos : feuille claire pleine largeur, sous le média. Il ne
+     défile PAS tout seul (c'est le voile qui défile) → tout l'espace lui est
+     rendu, tags et note compris, exactement comme sur mymind. */
+  .detail-panneau {
+    width: 100%; max-width: none; max-height: none;
+    margin: 10px 10px 0; border-radius: 22px;
+    overflow: visible;
+  }
+  .dp-haut { overflow: visible; padding: 24px 22px 8px; }
+  .dp-actions {
+    justify-content: flex-start; gap: 12px;
+    padding: 14px 22px calc(6px + env(safe-area-inset-bottom));
+  }
+  /* Cibles tactiles plus généreuses. */
+  .dp-icone { width: 46px; height: 46px; font-size: 18px; }
+  .tag-ajout, .tag-chip { padding-top: 8px; padding-bottom: 8px; }
+  .note-editeur { min-height: 96px; font-size: 16px; }
 }
 
 .dp-nouvel-espace { padding: 0 24px 4px; }
@@ -677,6 +710,31 @@ body {
 @keyframes monte-annul {
   from { opacity: 0; transform: translate(-50%, 10px); }
   to   { opacity: 1; transform: translate(-50%, 0); }
+}
+
+/* ---------- Compteur de téléchargement discret (synchro Drive) ----------
+   Apparaît seulement pendant qu'un lot de cartes se télécharge depuis Drive
+   (surtout au premier lancement sur un appareil), puis disparaît. Coin bas
+   gauche pour ne gêner ni le bouton + (bas droite) ni le rail. */
+.sync-compteur {
+  position: fixed; z-index: 55;
+  left: calc(var(--rail) + 14px); bottom: calc(20px + env(safe-area-inset-bottom));
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 7px 13px; border-radius: 999px;
+  background: hsla(222, 28%, 14%, .82); color: white;
+  font-size: 12.5px; font-weight: 600; letter-spacing: .01em;
+  box-shadow: var(--ombre-lg); backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: monte-annul .2s ease;
+  pointer-events: none; user-select: none;
+}
+.sync-compteur-point {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--degrade); animation: respiration 1.2s ease-in-out infinite;
+}
+@media (max-width: 640px) {
+  /* Sur mobile le rail est en bas → on remonte le compteur au-dessus. */
+  .sync-compteur { left: 14px; bottom: calc(72px + env(safe-area-inset-bottom)); }
 }
 
 /* ---------- Badge corbeille (rail) ---------- */

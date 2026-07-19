@@ -449,14 +449,18 @@ let enCours = null
 // qu'elle ne pousse en double des cartes que l'import est en train d'écrire.
 let importEnCours = false
 export function marquerImport(actif) { importEnCours = actif }
-export function synchroniser() {
+// `onProgress({ recues, total })` (optionnel) est appelé au fil du
+// téléchargement des cartes depuis Drive → alimente le compteur discret de
+// l'interface. `total` = nombre de cartes à recevoir (nouvelles ou plus
+// récentes côté Drive) ; `recues` = combien sont déjà arrivées.
+export function synchroniser(onProgress) {
   if (importEnCours) return Promise.resolve(null)
   if (enCours) return enCours
-  enCours = _synchroniser().finally(() => { enCours = null })
+  enCours = _synchroniser(onProgress).finally(() => { enCours = null })
   return enCours
 }
 
-async function _synchroniser() {
+async function _synchroniser(onProgress) {
   console.log('[sync] début')
   await jetonValide()
   await garantirDossiers()
@@ -493,6 +497,23 @@ async function _synchroniser() {
   const locales = await db.cartes.toArray()
   const localesParId = new Map(locales.map(c => [c.id, c]))
   const tousIds = new Set([...localesParId.keys(), ...parCarte.keys()])
+
+  // Combien de cartes vont être TÉLÉCHARGÉES depuis Drive (compteur « X / Y »).
+  // On reproduit ici la décision « réception » du grand parcours ci-dessous :
+  // ni tombstone, ni carte échue, pas d'envoi, et Drive plus récent (ou carte
+  // absente en local).
+  let aRecevoir = 0
+  for (const id of tousIds) {
+    const locale = localesParId.get(id)
+    const dist = parCarte.get(id)
+    if (dist?.deleted) continue
+    if (locale?.supprime && estEchu(locale)) continue
+    const modLocale = locale?.modifieLe || 0
+    const modDist = dist?.md ? Number(dist.md.appProperties?.modifieLe || 0) : 0
+    const envoi = locale && (!dist?.md || modLocale > modDist)
+    if (!envoi && dist?.md && (!locale || modDist > modLocale)) aRecevoir++
+  }
+  if (onProgress) onProgress({ recues: 0, total: aRecevoir })
 
   let envoyees = 0, recues = 0, suppr = 0
 
@@ -543,6 +564,7 @@ async function _synchroniser() {
     if (dist?.md && (!locale || modDist > modLocale)) {
       await recevoirCarte(id, dist)
       recues++
+      if (onProgress) onProgress({ recues, total: aRecevoir })
     }
   }
 
