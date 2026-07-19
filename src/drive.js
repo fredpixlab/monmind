@@ -379,6 +379,17 @@ export async function pousserCarteImportee(carte, fichier, vignetteBlob) {
   return { driveMediaId: media.id, driveVignetteId: vign.id, driveMdId: md.id, vignetteNom: nomVign }
 }
 
+// Remplace le CONTENU d'une vignette déjà présente dans Drive (même fichier
+// `<id>.thumb.jpg`) — utilisé par « régénérer la vignette » sur une vidéo dont
+// le poster était noir. PATCH (fileId fourni) → les autres appareils reçoivent
+// la nouvelle miniature à la prochaine synchro.
+export async function pousserVignette(driveVignetteId, cardId, vignetteBlob) {
+  await jetonValide()
+  return televerser(driveVignetteId,
+    { appProperties: { cardId, kind: 'vignette' } },
+    vignetteBlob, 'image/jpeg')
+}
+
 // Pousse une carte importée SANS média (note / lien) : juste le .md.
 export async function pousserCarteTexte(carte) {
   await jetonValide()

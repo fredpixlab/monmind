@@ -589,6 +589,8 @@ body {
   display: flex; align-items: center; justify-content: center; transition: all .15s;
 }
 .dp-jeter:hover { background: hsl(6, 70%, 96%); color: hsl(6, 60%, 50%); border-color: hsl(6, 60%, 80%); }
+.dp-icone:disabled { opacity: .5; cursor: default; }
+.dp-ok { color: hsl(150, 48%, 38%); border-color: hsl(150, 45%, 72%); background: hsl(150, 50%, 97%); }
 
 /* ---- Panneau d'infos repliable (desktop + iPad, ≥ 768 px) : par défaut FERMÉ.
    Le panneau reste DANS LE FLUX (colonne à droite de l'image) mais est masqué
@@ -635,6 +637,8 @@ body {
   }
 }
 @keyframes panneau-entre { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
+/* Feuille du bas (téléphone) : entrée par le bas, sans transform résiduelle. */
+@keyframes feuille-monte { from { transform: translateY(100%); } to { transform: translateY(0); } }
 
 /* ---- Vue détail sur TÉLÉPHONE (< 768 px) : le média occupe TOUTE la largeur
    et presque tout l'écran. Le panneau d'infos est une FEUILLE DU BAS qui monte
@@ -683,18 +687,28 @@ body {
     font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
   }
 
-  /* ----- Panneau = feuille du bas coulissante, AU-DESSUS de la barre ----- */
+  /* ----- Panneau = feuille du bas, AU-DESSUS de la barre. Quand le clavier
+     iOS s'ouvre, `--kb` (hauteur clavier, posée en JS via visualViewport) la
+     remonte au-dessus de lui pour que les champs restent saisissables. ----- */
   .detail-panneau {
     position: fixed; left: 0; right: 0; z-index: 55;
-    bottom: calc(56px + env(safe-area-inset-bottom));
-    width: 100%; max-width: none; max-height: 78vh;
+    bottom: calc(56px + env(safe-area-inset-bottom) + var(--kb, 0px));
+    width: 100%; max-width: none;
+    max-height: calc(78vh - var(--kb, 0px));
     margin: 0; border-radius: 22px 22px 0 0; overflow: hidden;
     box-shadow: 0 -16px 46px hsla(0, 0%, 0%, .34);
-    transform: translateY(110%);
-    transition: transform .3s cubic-bezier(.4, 0, .2, 1);
+    display: none;   /* fermé : retiré du rendu */
   }
-  .detail-scene.panneau-ouvert .detail-panneau { transform: translateY(0); }
-  .dp-haut { overflow-y: auto; max-height: calc(78vh - 76px); padding: 22px 22px 8px; -webkit-overflow-scrolling: touch; }
+  /* Ouvert : on AFFICHE et on joue une animation d'entrée. ⚠️ On utilise une
+     KEYFRAME (pas une `transition` avec `transform` permanent) : un `transform`
+     résiduel sur un conteneur `position:fixed` FIGE la saisie clavier sur iOS
+     (le texte tapé n'arrive pas dans le champ). Après l'anim, plus aucune
+     transform → clavier OK. */
+  .detail-scene.panneau-ouvert .detail-panneau {
+    display: flex;
+    animation: feuille-monte .3s cubic-bezier(.4, 0, .2, 1);
+  }
+  .dp-haut { overflow-y: auto; max-height: calc(78vh - 76px - var(--kb, 0px)); padding: 22px 22px 8px; -webkit-overflow-scrolling: touch; }
   .dp-actions {
     justify-content: flex-start; gap: 12px;
     padding: 12px 22px 14px;

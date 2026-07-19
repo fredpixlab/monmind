@@ -51,14 +51,20 @@ export function vignetteImage(blob) {
 //      loin dans la vidéo (1 s → 2,5 s → 5 s → 9 s, bornés par la durée).
 export function vignetteVideo(blob) {
   return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(blob)
+    // Ré-étiquetage .mov / octet-stream → mp4 : Safari lit le .mov nativement,
+    // mais Chrome REFUSE `video/quicktime` (même codec H.264/MP4 dedans) → sans
+    // ça, `onerror` part et on tombe sur la tuile grise. `.mov` et `.mp4` sont
+    // tous deux de l'ISO-BMFF : relibeller le blob suffit.
+    const type = (!blob.type || /quicktime|octet-stream/.test(blob.type)) ? 'video/mp4' : blob.type
+    const source = type === blob.type ? blob : blob.slice(0, blob.size, type)
+    const url = URL.createObjectURL(source)
     const v = document.createElement('video')
     v.muted = true; v.playsInline = true; v.preload = 'auto'
     let fait = false
     const finir = (fn, arg) => { if (!fait) { fait = true; clearTimeout(minuteur); URL.revokeObjectURL(url); fn(arg) } }
-    // Délai de sécurité : certains formats (ex. .mov) ne déclenchent NI
-    // « loadeddata » NI « error » dans Chrome → sans ça, ça fige.
-    const minuteur = setTimeout(() => finir(reject, new Error('vidéo : délai vignette dépassé')), 15000)
+    // Délai de sécurité : certains formats ne déclenchent NI « loadeddata » NI
+    // « error » → sans ça, ça fige.
+    const minuteur = setTimeout(() => finir(reject, new Error('vidéo : délai vignette dépassé')), 18000)
 
     let essais = [], idx = 0, meilleur = null   // `meilleur` = dernier rendu si tout est noir
     const seekProchain = () => {
@@ -91,9 +97,20 @@ export function vignetteVideo(blob) {
         seekProchain()                               // sinon on tente plus loin
       } catch (e) { finir(reject, e) }
     }
+    // Après un `seeked`, il faut attendre que la frame soit RÉELLEMENT peinte
+    // avant de dessiner. `requestVideoFrameCallback` est le signal fiable ; mais
+    // sur certains iOS il peut ne pas se déclencher hors lecture → filet de
+    // sécurité (400 ms) pour capturer quand même. Sinon (pas de rVFC) : deux
+    // `requestAnimationFrame` + court délai.
     v.onseeked = () => {
-      if (typeof v.requestVideoFrameCallback === 'function') v.requestVideoFrameCallback(() => capter())
-      else setTimeout(capter, 130)   // laisse le temps au rendu de la frame
+      let lance = false
+      const go = () => { if (!lance) { lance = true; capter() } }
+      if (typeof v.requestVideoFrameCallback === 'function') {
+        v.requestVideoFrameCallback(() => go())
+        setTimeout(go, 400)
+      } else {
+        requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(go, 80)))
+      }
     }
     v.onerror = () => finir(reject, new Error('vidéo illisible'))
     v.src = url

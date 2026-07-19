@@ -4,7 +4,8 @@ import { db, ajouterCarte, supprimerCarte, restaurerCarte, majCarte, estUneUrl, 
 import { construireIndex, rechercher } from './recherche.js'
 import { ajouterMediaDepuisFichier, estMediaSupporte, estFichierOcr, injecterOcr, ocrEnFond } from './ajout-media.js'
 import { sync_configuree, API_BASE } from './config.js'
-import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion, telechargerMediaComplet, rafraichirJeton, purgerCarte, enregistrerSession, aSessionBackend } from './drive.js'
+import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion, telechargerMediaComplet, rafraichirJeton, purgerCarte, enregistrerSession, aSessionBackend, pousserVignette } from './drive.js'
+import { vignetteVideo } from './vignette.js'
 import { lancerImport } from './import-run.js'
 
 // ---------------------------------------------------------------
@@ -331,6 +332,29 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
   // média (voir CSS) et cet état n'a aucun effet. L'état PERSISTE quand on
   // navigue ← → : ouvert une fois, il reste ouvert sur les cartes suivantes.
   const [panneauOuvert, setPanneauOuvert] = useState(false)
+  const [regenEtat, setRegenEtat] = useState('idle')  // idle | charge | ok | erreur — régénération vignette vidéo
+
+  // Sur téléphone, le panneau d'infos est une feuille FIXÉE en bas. Quand le
+  // clavier iOS s'ouvre, on remonte la feuille juste au-dessus de lui (sinon
+  // les champs se retrouvent derrière → saisie impossible). On expose la
+  // hauteur du clavier en variable CSS `--kb`, lue par la media query mobile.
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const racine = document.documentElement
+    const maj = () => {
+      const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop)
+      racine.style.setProperty('--kb', kb + 'px')
+    }
+    vv.addEventListener('resize', maj)
+    vv.addEventListener('scroll', maj)
+    maj()
+    return () => {
+      vv.removeEventListener('resize', maj)
+      vv.removeEventListener('scroll', maj)
+      racine.style.setProperty('--kb', '0px')
+    }
+  }, [])
 
   // Image affichée : la complète si chargée, sinon la vignette / l'aperçu.
   // `vignetteSrc` est recalculée depuis la carte → la navigation ← → affiche
@@ -426,6 +450,25 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
     }
     return () => { vivant = false; if (url) URL.revokeObjectURL(url) }
   }, [carte.distant, carte.type, carte.driveMediaId])
+
+  // Régénère la vignette d'une vidéo (poster noir) : on télécharge la vidéo
+  // complète depuis Drive, on recapture une image (algo fiabilisé : attend la
+  // frame peinte + saute le quasi-noir), on met à jour la copie locale ET on
+  // remplace la vignette dans Drive (les autres appareils suivront).
+  async function regenererVignette() {
+    if (!carte.driveMediaId || regenEtat === 'charge') return
+    setRegenEtat('charge')
+    try {
+      let blob
+      try { blob = await telechargerMediaComplet(carte.driveMediaId) }
+      catch (e) { await rafraichirJeton().catch(() => {}); blob = await telechargerMediaComplet(carte.driveMediaId) }
+      const vign = await vignetteVideo(blob)
+      await majCarte(carte.id, { vignette: vign })
+      if (carte.driveVignetteId) await pousserVignette(carte.driveVignetteId, carte.id, vign).catch(() => {})
+      setRegenEtat('ok')
+      onModif && onModif()
+    } catch (e) { console.error('[regen-vignette]', e); setRegenEtat('erreur') }
+  }
 
   async function chargerVideo() {
     if (videoSrc || chargeMedia) return
@@ -705,6 +748,8 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
                 <input
                   className="tag-input" autoFocus placeholder="nom du tag…"
                   list="tags-connus" value={nouveauTag}
+                  name="nouveau-tag" inputMode="text" enterKeyHint="done"
+                  autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}
                   onChange={e => setNouveauTag(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === 'Enter') { e.preventDefault(); ajouterTag() }
@@ -755,6 +800,19 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
           )}
 
           <div className="dp-actions">
+            {carte.type === 'video' && carte.driveMediaId && (
+              <button
+                className={'dp-icone' + (regenEtat === 'ok' ? ' dp-ok' : '')}
+                disabled={regenEtat === 'charge'}
+                title={
+                  regenEtat === 'charge' ? 'Régénération de la vignette…'
+                    : regenEtat === 'ok' ? 'Vignette régénérée ✓'
+                    : regenEtat === 'erreur' ? 'Échec — réessayer'
+                    : 'Régénérer la vignette (utile si le poster est noir)'
+                }
+                onClick={regenererVignette}
+              >{regenEtat === 'charge' ? '…' : regenEtat === 'ok' ? '✓' : regenEtat === 'erreur' ? '↻' : '🖼'}</button>
+            )}
             {telechargeable && (
               <button className="dp-icone" title="Télécharger en local" onClick={telecharger}>↓</button>
             )}
