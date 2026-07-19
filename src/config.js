@@ -16,3 +16,8 @@ export const DOSSIER_RACINE = 'MonMind'
 export const DOSSIER_CARTES = 'cartes'
 
 export const sync_configuree = () => CLIENT_ID.length > 0
+
+// Backend MonCoffre (Cloudflare Worker). Vide = pas de backend (l'app marche
+// quand même, sans aperçus de liens). Phase A : /preview (aperçus). Phase B à
+// venir : /token (connexion Drive permanente).
+export const API_BASE = 'https://moncoffre-api.fredpixlab.workers.dev'

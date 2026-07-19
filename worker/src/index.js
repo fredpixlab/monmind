@@ -56,6 +56,21 @@ async function preview(reqUrl, ctx) {
 
 function domaine(u) { try { return new URL(u).hostname.replace(/^www\./, '') } catch { return '' } }
 
+// Décode les entités HTML les plus courantes (les titres et le texte des tweets
+// arrivent souvent avec « &mdash; », « &#39; », etc.).
+function decode(s) {
+  if (!s) return s
+  return s
+    .replace(/&#(\d+);/g, (_, n) => { try { return String.fromCodePoint(+n) } catch { return _ } })
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => { try { return String.fromCodePoint(parseInt(h, 16)) } catch { return _ } })
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+    .replace(/&apos;|&#39;/g, "'").replace(/&nbsp;/g, ' ')
+    .replace(/&mdash;/g, '—').replace(/&ndash;/g, '–').replace(/&hellip;/g, '…')
+    .replace(/&rsquo;/g, '’').replace(/&lsquo;/g, '‘')
+    .replace(/&ldquo;/g, '“').replace(/&rdquo;/g, '”')
+    .replace(/&amp;/g, '&')
+}
+
 async function extraire(cible) {
   const d = domaine(cible)
   if (/(^|\.)(twitter\.com|x\.com)$/.test(d)) return await twitter(cible, d)
@@ -94,10 +109,10 @@ async function ogImage(cible, d) {
 
   await rw.transform(r).arrayBuffer()   // consomme le flux → exécute les handlers
 
-  const titre = (f.titre || f.t || '').replace(/\s+/g, ' ').trim().slice(0, 200)
+  const titre = decode((f.titre || f.t || '').replace(/\s+/g, ' ').trim()).slice(0, 200)
   let image = ''
   if (f.image) { try { image = new URL(f.image, cible).toString() } catch { image = '' } }
-  return { image, titre, desc: (f.desc || '').replace(/\s+/g, ' ').trim().slice(0, 300), dom: d }
+  return { image, titre, desc: decode((f.desc || '').replace(/\s+/g, ' ').trim()).slice(0, 300), dom: d }
 }
 
 // Twitter / X : l'oEmbed officiel renvoie le texte du tweet + l'auteur (pas
@@ -108,7 +123,7 @@ async function twitter(cible, d) {
   if (!r.ok) return { erreur: 'oembed ' + r.status, dom: d }
   const j = await r.json().catch(() => null)
   if (!j) return { erreur: 'oembed illisible', dom: d }
-  const texte = (j.html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  const texte = decode((j.html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim())
   return { image: '', titre: (j.author_name || '').slice(0, 120), texte: texte.slice(0, 400), dom: d }
 }
 

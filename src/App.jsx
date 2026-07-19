@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { db, ajouterCarte, supprimerCarte, restaurerCarte, majCarte, estUneUrl, creerEspace, supprimerEspace, basculerEpingle, membresEspace, normTag, semerSpacesMymind, DUREE_CORBEILLE } from './db.js'
 import { construireIndex, rechercher } from './recherche.js'
 import { ajouterMediaDepuisFichier, estMediaSupporte, estFichierOcr, injecterOcr, ocrEnFond } from './ajout-media.js'
-import { sync_configuree } from './config.js'
+import { sync_configuree, API_BASE } from './config.js'
 import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion, telechargerMediaComplet, rafraichirJeton, purgerCarte } from './drive.js'
 import { lancerImport } from './import-run.js'
 
@@ -1367,6 +1367,43 @@ export default function App() {
   useEffect(() => {
     if (espaceActif && !espaces.some(e => e.id === espaceActif)) setEspaceActif(null)
   }, [espaces, espaceActif])
+
+  // Enrichissement des APERÇUS de liens via le backend (Phase A), une fois par
+  // session. Pour chaque carte lien sans aperçu (hors YouTube) et pas encore
+  // tentée, on demande au Worker `/preview` une image (og:image) + un texte
+  // (tweet). On range le résultat dans la carte : l'image se synchronise partout
+  // (champ `apercu`), et on marque la carte « tentée » (local) pour ne pas y
+  // revenir. Doux (6 en parallèle, petite pause). Une erreur RÉSEAU n'est pas
+  // marquée → on réessaiera (ex. le temps que le certificat du Worker soit prêt).
+  const enrichLance = useRef(false)
+  useEffect(() => {
+    if (modeExt || !API_BASE || enrichLance.current || !contenu.length) return
+    enrichLance.current = true
+    ;(async () => {
+      const aFaire = contenu.filter(c =>
+        c.type === 'lien' && c.url && !c.apercu && !c.apercuTente && !idYouTube(c.url))
+      for (let i = 0; i < aFaire.length; i += 6) {
+        const lot = aFaire.slice(i, i + 6)
+        const updates = []
+        let besoinSync = false
+        await Promise.all(lot.map(async c => {
+          try {
+            const r = await fetch(`${API_BASE}/preview?url=${encodeURIComponent(c.url)}`)
+            if (!r.ok) return // KO serveur → pas de marquage, on retentera
+            const j = await r.json()
+            const ch = { apercuTente: 1 }
+            if (j.image) { ch.apercu = j.image; besoinSync = true }
+            if (!(c.texte || '').trim() && j.texte) { ch.texte = j.texte; besoinSync = true }
+            if (ch.apercu || ch.texte) ch.modifieLe = Date.now() // change réel → à synchroniser
+            updates.push({ key: c.id, changes: ch })
+          } catch { /* réseau KO → on retentera plus tard */ }
+        }))
+        if (updates.length) await db.cartes.bulkUpdate(updates)
+        if (besoinSync) syncRef.current?.()
+        await new Promise(r => setTimeout(r, 500))
+      }
+    })().catch(e => console.error('[apercu-lien]', e))
+  }, [contenu, modeExt])
 
   // Passe à la carte précédente / suivante dans l'ordre affiché (façon mymind).
   // Partagé par les flèches ← → du clavier (desktop) ET le swipe (mobile).
