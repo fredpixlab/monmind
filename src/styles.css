@@ -591,41 +591,48 @@ body {
 .dp-jeter:hover { background: hsl(6, 70%, 96%); color: hsl(6, 60%, 50%); border-color: hsl(6, 60%, 80%); }
 
 /* ---- Panneau d'infos repliable (desktop) : par défaut FERMÉ. Le panneau
-   devient un tiroir fixé à droite (hors flux → le contenu occupe toute la
-   largeur) ; on le fait glisser via l'onglet vertical accroché au bord.
-   Onglet masqué par défaut (mobile : le panneau coule déjà sous le média) ; la
-   media query desktop ci-dessous le réactive — d'où l'ordre : base AVANT. ---- */
+   reste DANS LE FLUX (colonne à droite de l'image) mais est masqué tant qu'il
+   est fermé → l'image seule est centrée sur la page. L'onglet est ancré au bord
+   DROIT de l'image (position absolue dans `.detail-contenu`) : à la fermeture il
+   tient lieu de barre de tags, à l'ouverture il sert de poignée entre l'image et
+   le panneau. À l'ouverture, `.detail-scene` (flex, centré dans le voile) porte
+   image + panneau → l'image se décale à gauche et l'ensemble reste centré,
+   horizontalement ET verticalement. Onglet masqué par défaut (mobile : le
+   panneau coule déjà sous le média) ; la media query desktop le réactive —
+   d'où l'ordre : base AVANT (sinon la règle plate gagne par ordre source). ---- */
 .detail-onglet { display: none; }
 @media (min-width: 821px) {
-  .detail-onglet { display: flex; }
-  .detail-panneau {
-    position: fixed; top: 4vh; right: 0; height: 92vh; z-index: 41;
-    border-radius: 16px 0 0 16px;
-    box-shadow: -12px 0 48px hsla(0, 0%, 0%, .28);
-    transform: translateX(calc(100% + 24px));
-    transition: transform .32s cubic-bezier(.4, 0, .2, 1);
-  }
-  .detail-scene.panneau-ouvert .detail-panneau { transform: translateX(0); }
+  /* La scène ne prend QUE la largeur de ses enfants (image [+ panneau]) et se
+     centre dans le voile → ensemble centré H+V ; l'image se décale à gauche
+     quand le panneau apparaît. */
+  .detail-scene { align-items: center; gap: 46px; width: auto; }
+  .detail-contenu { flex: 0 1 auto; position: relative; }
+  /* Cartes lien / note : largeur fixe (l'image, elle, dicte sa propre taille). */
+  .dc-carte { width: min(620px, 56vw); }
 
-  /* Onglet : pastille verticale au bord droit ; ouvert, elle se cale sur le
-     bord gauche du tiroir et lui sert de poignée. */
+  /* Panneau : caché quand fermé, en flux (colonne) quand ouvert. */
+  .detail-scene:not(.panneau-ouvert) .detail-panneau { display: none; }
+  .detail-scene.panneau-ouvert .detail-panneau { animation: panneau-entre .28s ease both; }
+
+  /* Onglet : tab vertical accroché au bord DROIT de l'image, protrudant. */
   .detail-onglet {
-    position: fixed; right: 0; top: 50%; transform: translateY(-50%);
-    z-index: 42; flex-direction: column; align-items: center; gap: 8px;
-    padding: 16px 9px; border: none; cursor: pointer;
+    display: flex; position: absolute; top: 50%; right: -16px;
+    transform: translate(100%, -50%); z-index: 42;
+    flex-direction: column; align-items: center; gap: 9px;
+    padding: 24px 13px; border: none; cursor: pointer;
     background: hsla(228, 30%, 98%, .97); color: var(--encre-2);
-    border-radius: 12px 0 0 12px;
-    box-shadow: -6px 0 22px hsla(0, 0%, 0%, .22);
-    transition: right .32s cubic-bezier(.4, 0, .2, 1), color .15s, background .15s;
+    border-radius: 14px;
+    box-shadow: 0 10px 34px hsla(0, 0%, 0%, .30);
+    transition: color .15s, background .15s, box-shadow .15s;
   }
-  .detail-onglet:hover { color: var(--encre); background: #fff; }
-  .detail-scene.panneau-ouvert .detail-onglet { right: min(360px, 42vw); }
-  .detail-onglet-fleche { font-size: 18px; line-height: 1; font-weight: 700; }
+  .detail-onglet:hover { color: var(--encre); background: #fff; box-shadow: 0 12px 40px hsla(0,0%,0%,.36); }
+  .detail-onglet-fleche { font-size: 20px; line-height: 1; font-weight: 700; }
   .detail-onglet-txt {
     writing-mode: vertical-rl; text-orientation: mixed;
-    font-size: 11px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+    font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
   }
 }
+@keyframes panneau-entre { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
 
 /* ---- Vue détail sur mobile / écran étroit : mise en page VERTICALE façon
    mymind. Le média (ou la note / le lien) occupe le haut en grand, puis le
