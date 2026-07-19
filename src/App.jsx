@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, ajouterCarte, supprimerCarte, restaurerCarte, majCarte, estUneUrl, creerEspace, supprimerEspace, basculerEpingle, membresEspace, semerSpacesMymind, DUREE_CORBEILLE } from './db.js'
+import { db, ajouterCarte, supprimerCarte, restaurerCarte, majCarte, estUneUrl, creerEspace, supprimerEspace, basculerEpingle, membresEspace, normTag, semerSpacesMymind, DUREE_CORBEILLE } from './db.js'
 import { construireIndex, rechercher } from './recherche.js'
 import { ajouterMediaDepuisFichier, estMediaSupporte, estFichierOcr, injecterOcr, ocrEnFond } from './ajout-media.js'
 import { sync_configuree } from './config.js'
@@ -151,13 +151,33 @@ function estCarteVide(c) {
   return !(c.texte || '').trim() && !(c.titre || '').trim() &&
          !(c.url || '').trim() && !c.apercu && !c.image && !c.vignette
 }
-// Statistiques + liste des cartes à revoir, calculées en mémoire.
+// Cartes « privées » : portant le tag `private`. Cachées de la page principale,
+// des espaces et de la sérendipité — on ne les voit qu'en cherchant « #private ».
+const TAG_PRIVE = 'private'
+function estPrivee(c) { return (c.tags || []).some(t => normTag(t) === TAG_PRIVE) }
+
+// Analyse la requête : les jetons « #tag » filtrent sur un tag EXACT (recherche
+// précise sur LE TAG, pas sur le mot où qu'il soit dans le contenu). Le reste est
+// du texte libre passé à MiniSearch. Ex. « #ia design » → tag « ia » + texte « design ».
+function analyserRequete(q) {
+  const tags = [], mots = []
+  for (const tok of (q || '').trim().split(/\s+/).filter(Boolean)) {
+    if (tok[0] === '#' && tok.length > 1) tags.push(normTag(tok.slice(1)))
+    else mots.push(tok)
+  }
+  return { tags: tags.filter(Boolean), texte: mots.join(' ') }
+}
+
+// Statistiques + liste des cartes à revoir, calculées en mémoire. Les cartes
+// privées sont comptées à part (`privees`), hors des compteurs publics.
 function calculerStats(contenu, tousTags, espaces, ocr) {
   const parType = { image: 0, video: 0, note: 0, lien: 0, pdf: 0 }
   const dom = {}
-  let yt = 0, tw = 0, social = 0, liensSansApercu = 0
+  let yt = 0, tw = 0, social = 0, liensSansApercu = 0, privees = 0, total = 0
   const aRevoir = []
   for (const c of contenu) {
+    if (estPrivee(c)) { privees++; continue }
+    total++
     if (parType[c.type] != null) parType[c.type]++
     if (c.type === 'lien') {
       const d = domaineDe(c.url || '')
@@ -171,8 +191,8 @@ function calculerStats(contenu, tousTags, espaces, ocr) {
   }
   const topDom = Object.entries(dom).sort((a, b) => b[1] - a[1]).slice(0, 12)
   return {
-    total: contenu.length, parType, yt, tw, social, liensSansApercu, topDom,
-    nbTags: tousTags.length, nbEspaces: espaces.length, ocr, aRevoir
+    total, parType, yt, tw, social, liensSansApercu, topDom,
+    nbTags: tousTags.length, nbEspaces: espaces.length, ocr, aRevoir, privees
   }
 }
 
@@ -1065,6 +1085,7 @@ function VueStats({ contenu, tousTags, espaces, ocr, onOuvrir }) {
     { n: s.nbTags, l: 'tags' },
     { n: s.nbEspaces, l: 'espaces' },
     { n: `${s.ocr.faites} / ${s.ocr.total}`, l: 'images lues (OCR)' },
+    ...(s.privees ? [{ n: s.privees, l: 'privées 🔒' }] : []),
   ]
   const max = s.topDom.length ? s.topDom[0][1] : 1
   return (
@@ -1302,22 +1323,38 @@ export default function App() {
   const corbeille = base?.corbeille || []
   const ocr = base?.ocr || { total: 0, faites: 0 }
 
+  // Contenu « public » : sans les cartes privées. C'est ce qu'on montre par
+  // défaut (accueil, espaces, sérendipité). L'index plein-texte, lui, garde
+  // TOUTES les cartes pour que « #private » puisse les retrouver.
+  const contenuPublic = useMemo(() => contenu.filter(c => !estPrivee(c)), [contenu])
+
   // Index plein-texte MiniSearch : reconstruit UNIQUEMENT quand la liste
   // des cartes change (pas à chaque frappe). ~2300 cartes → construction
   // quasi instantanée, gardée en mémoire ensuite.
   const index = useMemo(() => construireIndex(contenu), [contenu])
 
-  // Liste affichée : filtres espace/tag, puis recherche plein-texte classée
-  // par pertinence. Recalculée à chaque frappe, mais sans reconstruire l'index.
+  // Liste affichée : filtres espace / tag / #tag, puis recherche plein-texte
+  // classée par pertinence. Recalculée à chaque frappe, sans reconstruire l'index.
   const cartes = useMemo(() => {
     if (!base) return undefined // encore en chargement → évite un flash « vide »
-    let liste = contenu
+    const { tags: tagsRech, texte } = analyserRequete(recherche)
+    const veutPrive = tagsRech.includes(TAG_PRIVE)
+    // Les cartes privées sont cachées PARTOUT, sauf si on cherche « #private ».
+    let liste = veutPrive ? contenu : contenuPublic
     if (espaceActif) {
       const esp = espaces.find(e => e.id === espaceActif)
       liste = esp ? membresEspace(esp, liste) : liste
     }
     if (tagActif) liste = liste.filter(c => (c.tags || []).includes(tagActif))
-    const ordre = rechercher(index, recherche)
+    // Filtres « #tag » explicites : match EXACT du tag (tolérant casse/ponctuation).
+    if (tagsRech.length) {
+      liste = liste.filter(c => {
+        const set = (c.tags || []).map(normTag)
+        return tagsRech.every(t => set.includes(t))
+      })
+    }
+    // Le reste de la requête = texte libre → MiniSearch (classé par pertinence).
+    const ordre = texte ? rechercher(index, texte) : null
     if (ordre) {
       const rang = new Map(ordre.map((id, i) => [id, i]))
       liste = liste
@@ -1325,7 +1362,7 @@ export default function App() {
         .sort((a, b) => rang.get(a.id) - rang.get(b.id))
     }
     return liste
-  }, [base, contenu, index, recherche, tagActif, espaceActif])
+  }, [base, contenu, contenuPublic, index, recherche, tagActif, espaceActif, espaces])
 
   useEffect(() => {
     if (espaceActif && !espaces.some(e => e.id === espaceActif)) setEspaceActif(null)
@@ -1379,8 +1416,9 @@ export default function App() {
   const espaceCourant = espaceActif ? espaces.find(e => e.id === espaceActif) : null
 
   // Serendipity : tire ~10 cartes au hasard et les met en avant une à une.
+  // (Sur le contenu PUBLIC : la sérendipité ne fait jamais surgir de carte privée.)
   function lancerSerendipity() {
-    const a = [...contenu]
+    const a = [...contenuPublic]
     for (let i = a.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1))
       ;[a[i], a[j]] = [a[j], a[i]]
@@ -1392,7 +1430,7 @@ export default function App() {
   // File alignée sur la queue (null si la carte a été oubliée/supprimée),
   // pour que l'index reste stable même après un « Oublier ».
   const serenFile = serenQueue.map(id => contenu.find(c => c.id === id) || null)
-  const serenGhosts = contenu.filter(c => !serenQueue.includes(c.id) && (c.image || c.apercu)).slice(0, 6)
+  const serenGhosts = contenuPublic.filter(c => !serenQueue.includes(c.id) && (c.image || c.apercu)).slice(0, 6)
   function serenGarder() { setSerenIdx(i => i + 1) }
   function serenOublier() {
     const c = serenFile[serenIdx]
@@ -1449,6 +1487,12 @@ export default function App() {
               {ocr.total > 0 && ocr.faites >= ocr.total && (
                 <p className="hero-ocr hero-ocr-ok" title="Toutes les images portent du texte reconnu.">
                   ✓ Texte reconnu sur les {ocr.total} images
+                </p>
+              )}
+              {!recherche && (
+                <p className="hero-astuce">
+                  Astuce : <code>#tag</code> cherche un tag précis (ex. <code>#recipe</code>).
+                  Les cartes <code>#private</code> ne s'affichent qu'ainsi.
                 </p>
               )}
             </div>
@@ -1547,7 +1591,7 @@ export default function App() {
                 <PileEspace
                   key={e.id}
                   espace={e}
-                  membres={membresEspace(e, contenu)}
+                  membres={membresEspace(e, contenuPublic)}
                   onOuvrir={ouvrirEspace}
                 />
               ))}
@@ -1557,7 +1601,7 @@ export default function App() {
 
         {/* ====== VUE SERENDIPITY ====== */}
         {vue === 'serendipity' && (
-          contenu.length === 0 ? (
+          contenuPublic.length === 0 ? (
             <div className="vide"><div className="orbe" /><h2>Rien à redécouvrir encore.</h2>
               <p>Garde quelques cartes, puis reviens ici pour retomber dessus par hasard.</p></div>
           ) : (
