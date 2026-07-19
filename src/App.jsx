@@ -247,6 +247,59 @@ function Carte({ carte, onOuvrir }) {
   )
 }
 
+// Rend un article capturé (Markdown léger : titres #, listes -, citations >,
+// **gras**) en éléments React — sans dépendance ni innerHTML (donc sûr). Le
+// vieux texte brut (sans marqueurs) passe naturellement en paragraphes.
+function fragmentsGras(txt, cle) {
+  const out = []
+  const re = /\*\*([^*]+)\*\*/g
+  let dernier = 0, m, i = 0
+  while ((m = re.exec(txt))) {
+    if (m.index > dernier) out.push(txt.slice(dernier, m.index))
+    out.push(<strong key={cle + '-' + (i++)}>{m[1]}</strong>)
+    dernier = m.index + m[0].length
+  }
+  if (dernier < txt.length) out.push(txt.slice(dernier))
+  return out
+}
+
+function RenduLecture({ texte }) {
+  const blocs = (texte || '').split(/\n{2,}/)
+  const elems = []
+  let liste = null
+  const viderListe = () => { if (liste) { elems.push(<ul className="ml-ul" key={'ul' + elems.length}>{liste}</ul>); liste = null } }
+  blocs.forEach((b, i) => {
+    const t = b.trim()
+    if (!t) return
+    const h = t.match(/^(#{1,6})\s+([\s\S]*)$/)
+    if (h) {
+      viderListe()
+      const n = h[1].length
+      const cont = fragmentsGras(h[2].replace(/\s+/g, ' ').trim(), 'h' + i)
+      if (n <= 1) elems.push(<h2 className="ml-h ml-h1" key={i}>{cont}</h2>)
+      else if (n === 2) elems.push(<h3 className="ml-h ml-h2" key={i}>{cont}</h3>)
+      else elems.push(<h4 className="ml-h ml-h3" key={i}>{cont}</h4>)
+      return
+    }
+    if (/^-\s+/.test(t)) {
+      if (!liste) liste = []
+      t.split('\n').forEach((l, j) => {
+        const li = l.replace(/^-\s+/, '').trim()
+        if (li) liste.push(<li key={i + '-' + j}>{fragmentsGras(li, 'li' + i + j)}</li>)
+      })
+      return
+    }
+    viderListe()
+    if (/^>\s?/.test(t)) {
+      elems.push(<blockquote className="ml-q" key={i}>{fragmentsGras(t.replace(/^>\s?/gm, '').trim(), 'q' + i)}</blockquote>)
+      return
+    }
+    elems.push(<p className="ml-p" key={i}>{fragmentsGras(t, 'p' + i)}</p>)
+  })
+  viderListe()
+  return <div className="dc-lecture-texte">{elems}</div>
+}
+
 // --- Vue DÉTAIL plein écran (façon mymind) -----------------------
 function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSupprimer, onNaviguer }) {
   const [tags, setTags] = useState(carte.tags || [])
@@ -515,7 +568,7 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
                       </button>
                       {lectureOuverte && (
                         <div className="dc-lecture-corps">
-                          <div className="dc-lecture-texte">{carte.article}</div>
+                          <RenduLecture texte={carte.article} />
                           <div className="dc-lecture-pied">
                             Capturé {carte.articleLe ? dateRelative(carte.articleLe) : ''}
                             <button className="dc-lecture-maj" onClick={capturerArticle}

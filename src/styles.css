@@ -487,8 +487,21 @@ body {
 .dc-lecture-corps { margin-top: 10px; }
 .dc-lecture-texte {
   font-family: var(--serif); font-size: 17px; line-height: 1.75; color: var(--encre);
-  white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word;
+  overflow-wrap: anywhere; word-break: break-word;
 }
+/* Markdown de l'article : titres, paragraphes, listes, citations, gras. */
+.dc-lecture-texte .ml-p { margin: 0 0 1em; }
+.dc-lecture-texte .ml-h { font-family: var(--serif); line-height: 1.3; margin: 1.3em 0 .5em; color: var(--encre); }
+.dc-lecture-texte .ml-h1 { font-size: 22px; font-weight: 700; }
+.dc-lecture-texte .ml-h2 { font-size: 19px; font-weight: 700; }
+.dc-lecture-texte .ml-h3 { font-size: 17px; font-weight: 600; color: var(--encre-2); }
+.dc-lecture-texte .ml-ul { margin: 0 0 1em; padding-left: 1.3em; }
+.dc-lecture-texte .ml-ul li { margin: .25em 0; }
+.dc-lecture-texte .ml-q {
+  margin: 0 0 1em; padding: .2em 0 .2em 1em; border-left: 3px solid var(--trait);
+  color: var(--encre-2); font-style: italic;
+}
+.dc-lecture-texte strong { font-weight: 700; }
 .dc-lecture-pied {
   margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--trait);
   display: flex; align-items: center; justify-content: space-between;

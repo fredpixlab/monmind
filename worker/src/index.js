@@ -155,7 +155,9 @@ async function lire(reqUrl, ctx) {
   const cible = reqUrl.searchParams.get('url')
   if (!cible || !/^https?:\/\//i.test(cible)) return cors(json({ erreur: 'url invalide' }, 400))
   const cache = caches.default
-  const key = new Request('https://moncoffre-cache.local/lire?u=' + encodeURIComponent(cible))
+  // La version fait partie de la clé : changer d'algo INVALIDE le cache (sinon
+  // un ancien contenu resterait servi 7 jours).
+  const key = new Request('https://moncoffre-cache.local/lire?v=' + LIRE_V + '&u=' + encodeURIComponent(cible))
   const cached = await cache.match(key)
   if (cached) return cors(cached)
   let data
@@ -164,18 +166,32 @@ async function lire(reqUrl, ctx) {
   const resp = new Response(JSON.stringify(data), {
     headers: {
       'Content-Type': 'application/json; charset=utf-8',
-      'Cache-Control': 'public, max-age=' + (data && data.erreur ? 3600 : 604800)
+      'Cache-Control': 'public, max-age=' + (data && data.erreur ? 300 : 604800)
     }
   })
   ctx.waitUntil(cache.put(key, resp.clone()))
   return cors(resp)
 }
 
+// Version de l'extracteur : à incrémenter à chaque changement d'algo (→ cache).
+const LIRE_V = '3'
+
 // Extraction en STREAMING via HTMLRewriter (parseur Rust natif de Cloudflare) :
-// quelques ms de CPU au lieu de ~90 ms pour Readability+DOM — indispensable pour
-// tenir sous la limite de 10 ms CPU du plan Workers gratuit. Heuristique : on
-// garde le texte des blocs de contenu (p, titres, listes, citations) et on ignore
-// les zones de « chrome » (nav, header, footer, aside, scripts, formulaires…).
+// ~3 ms de CPU au lieu de ~90 ms pour Readability+DOM — indispensable pour tenir
+// sous la limite de 10 ms CPU du plan Workers gratuit.
+//
+// Deux idées pour ne garder QUE l'article et sa mise en forme :
+//   1) CIBLAGE. On collecte le texte dans des « paniers » selon le conteneur :
+//      <article> (le plus précis), sinon <main>/[role=main], sinon le corps
+//      entier (repli). À la fin on choisit le meilleur → barre latérale,
+//      « articles liés » et commentaires tombent.
+//   2) MISE EN FORME. On émet du Markdown : titres #/##, **gras**, listes « - »,
+//      citations « > ». L'app les rend joliment.
+//
+// ⚠️ onEndTag() LÈVE une exception sur un élément VIDE (void : img, hr, link…).
+// Comme nos sélecteurs de « chrome » (classes, [hidden]…) peuvent matcher de tels
+// éléments, chaque onEndTag est protégé : on n'incrémente le compteur QUE si la
+// balise a une vraie fin (sinon un compteur resterait bloqué et masquerait tout).
 async function extraireArticle(cible) {
   const d = domaine(cible)
   const ctrl = new AbortController()
@@ -188,49 +204,94 @@ async function extraireArticle(cible) {
   const ct = (r.headers.get('content-type') || '')
   if (!/text\/html|xml/i.test(ct)) return { erreur: 'pas du HTML', dom: d }
 
-  // État partagé entre les gestionnaires (le flux est traité dans l'ordre du doc).
-  const S = { saut: 0, bloc: 0, dansTitre: false, morceaux: [], titre: '', ogTitre: '' }
-  const SAUT = 'script,style,noscript,nav,header,footer,aside,form,svg,button,figure,figcaption,label,select,template,iframe,object'
-  const BLOCS = 'p,h1,h2,h3,h4,h5,h6,li,blockquote,pre,dd'
+  // État partagé (le flux est traité dans l'ordre du document).
+  const S = {
+    saut: 0, bloc: 0, art: 0, princ: 0, dansTitre: false,
+    titre: '', ogTitre: '', paniers: { art: [], princ: [], corps: [] }
+  }
+  // Panier courant = le conteneur le plus précis actuellement ouvert.
+  const panier = () => S.art > 0 ? S.paniers.art : S.princ > 0 ? S.paniers.princ : S.paniers.corps
+  // N'écrit du contenu que DANS un bloc et HORS d'une zone ignorée.
+  const ecrire = s => { if (S.saut === 0 && S.bloc > 0) panier().push(s) }
+  // Ouvre une zone comptée seulement si la balise a une fin (protège des void).
+  const compter = (el, ouvre, ferme) => { try { el.onEndTag(ferme); ouvre() } catch (e) {} }
+
+  // Zones de « chrome » ignorées (balises + rôles ARIA + classes fréquentes de
+  // barres latérales, partages, commentaires, pubs…).
+  const SAUT = [
+    'script,style,noscript,template,svg,iframe,object,form,button,select,label',
+    'nav,header,footer,aside,figure,figcaption',
+    '[role=navigation],[role=banner],[role=contentinfo],[role=complementary],[role=search]',
+    '[aria-hidden=true],[hidden]',
+    '.sidebar,.comments,#comments,.related,.share,.social,.newsletter,.advert,.ads,.ad,.promo,.cookie,.subscribe'
+  ].join(',')
+  const BLOCS = 'p,li,blockquote,pre,dd,h1,h2,h3,h4,h5,h6'
+
   const rw = new HTMLRewriter()
-    .on(SAUT, { element(el) { S.saut++; el.onEndTag(() => { S.saut-- }) } })
-    .on('title', { element(el) { S.dansTitre = true; el.onEndTag(() => { S.dansTitre = false }) } })
+    .on(SAUT, { element(el) { compter(el, () => { S.saut++ }, () => { S.saut-- }) } })
+    // Conteneurs d'article, pour le ciblage.
+    .on('article', { element(el) { compter(el, () => { S.art++ }, () => { S.art-- }) } })
+    .on('main,[role=main]', { element(el) { compter(el, () => { S.princ++ }, () => { S.princ-- }) } })
+    .on('title', { element(el) { compter(el, () => { S.dansTitre = true }, () => { S.dansTitre = false }) } })
     .on('meta', {
       element(el) {
         const k = el.getAttribute('property') || el.getAttribute('name')
         if (k === 'og:title' && !S.ogTitre) { const c = el.getAttribute('content'); if (c) S.ogTitre = c }
       }
     })
+    // Ouverture d'un bloc → marqueur Markdown (titre #, liste -, citation >).
     .on(BLOCS, {
       element(el) {
-        if (S.saut === 0) S.morceaux.push(el.tagName === 'li' ? '\n• ' : '\n\n')
-        S.bloc++; el.onEndTag(() => { S.bloc-- })
+        let fin = false
+        try { el.onEndTag(() => { S.bloc-- }); fin = true } catch (e) {}
+        if (!fin) return
+        const tag = el.tagName
+        let pre = '\n\n'
+        if (tag[0] === 'h' && tag.length === 2) pre = '\n\n' + '#'.repeat(+tag[1]) + ' '
+        else if (tag === 'li') pre = '\n- '
+        else if (tag === 'blockquote') pre = '\n\n> '
+        if (S.saut === 0) panier().push(pre)
+        S.bloc++
       }
     })
+    // Gras → **…** directement. Le texte de <strong> ne contient pas les espaces
+    // voisins (hors balise) → « **mot** » correct sans nettoyage d'espaces.
+    .on('strong,b', { element(el) { try { el.onEndTag(() => ecrire('**')); ecrire('**') } catch (e) {} } })
     .onDocument({
       text(t) {
         if (!t.text) return
         if (S.dansTitre) { S.titre += t.text; return }
-        if (S.saut === 0 && S.bloc > 0) S.morceaux.push(t.text)
+        ecrire(t.text)
       }
     })
 
-  // Consommer entièrement le flux transformé (déclenche tous les gestionnaires).
+  // Consommer entièrement le flux (déclenche tous les gestionnaires).
   await rw.transform(r).arrayBuffer()
 
-  const texte = nettoyerTexte(S.morceaux).slice(0, 60000)
+  // Choix du panier : l'article s'il est fourni, sinon le principal, sinon le
+  // corps entier (repli). Seuil bas pour ne pas perdre un article court.
+  const art = nettoyerMd(S.paniers.art)
+  const princ = nettoyerMd(S.paniers.princ)
+  let texte = art.length >= 200 ? art : princ.length >= 200 ? princ : nettoyerMd(S.paniers.corps)
+  texte = texte.slice(0, 60000)
   if (texte.length < 120) return { erreur: 'article trop court', dom: d }
   const titre = decode((S.ogTitre || S.titre || '').replace(/\s+/g, ' ').trim()).slice(0, 300)
-  return { titre, texte, longueur: texte.length, dom: d }
+  return { titre, texte, format: 'md', longueur: texte.length, dom: d }
 }
 
-// Assemble les morceaux collectés en texte lisible (paragraphes préservés).
-function nettoyerTexte(morceaux) {
+// Assemble les morceaux en Markdown propre : retire les gras vides, normalise
+// espaces/sauts de ligne, et recolle le texte d'un titre/liste/citation resté
+// seul sous son marqueur (« ##\ntexte » → « ## texte »).
+function nettoyerMd(morceaux) {
   return decode(morceaux.join(''))
     .replace(/\r/g, '')
+    .replace(/\*\*\s*\*\*/g, '')
     .replace(/[ \t]{2,}/g, ' ')
     .replace(/ *\n */g, '\n')
     .replace(/\n{3,}/g, '\n\n')
+    .replace(/(\n#{1,6}) *\n[ \t]*/g, '$1 ')
+    .replace(/(\n- ) *\n[ \t]*/g, '$1')
+    .replace(/(\n> ) *\n[ \t]*/g, '$1')
     .trim()
 }
 
