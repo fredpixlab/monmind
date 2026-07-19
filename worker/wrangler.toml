@@ -1,0 +1,7 @@
+# Backend MonCoffre — Cloudflare Worker.
+# Phase A : service d'aperçus de liens (/preview). Aucun secret requis.
+# Phase B (à venir) : connexion Drive permanente (/login, /callback, /token)
+#   → ajoutera un binding KV (jeton chiffré) et des secrets (client OAuth).
+name = "moncoffre-api"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
