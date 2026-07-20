@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, ajouterCarte, supprimerCarte, restaurerCarte, majCarte, estUneUrl, creerEspace, supprimerEspace, basculerEpingle, membresEspace, normTag, semerSpacesMymind, DUREE_CORBEILLE } from './db.js'
+import { db, ajouterCarte, supprimerCarte, restaurerCarte, majCarte, estUneUrl, creerEspace, supprimerEspace, basculerEpingle, membresEspace, estMembreEspace, normTag, semerSpacesMymind, DUREE_CORBEILLE } from './db.js'
 import { construireIndex, rechercher } from './recherche.js'
 import { ajouterMediaDepuisFichier, estMediaSupporte, estFichierOcr, injecterOcr, ocrEnFond } from './ajout-media.js'
 import { sync_configuree, API_BASE } from './config.js'
@@ -325,6 +325,18 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
   const [tags, setTags] = useState(carte.tags || [])
   const [nouveauTag, setNouveauTag] = useState('')
   const [ajoutTag, setAjoutTag] = useState(false)
+  // Repli de la liste de tags : par défaut ~2 lignes avec un dégradé (façon
+  // mymind), dépliable. On mesure la hauteur RÉELLE du contenu pour ne montrer
+  // le bouton « +N » que si ça déborde vraiment (le seuil ~2 lignes ≈ 82 px).
+  const [tagsDeplies, setTagsDeplies] = useState(false)
+  const [tagsDebordent, setTagsDebordent] = useState(false)
+  const listeTagsRef = useRef(null)
+  // `scrollHeight` = hauteur du contenu COMPLET (ignore le `max-height` du
+  // repli) → comparaison stable, que la liste soit repliée ou dépliée.
+  useEffect(() => {
+    const el = listeTagsRef.current
+    if (el) setTagsDebordent(el.scrollHeight > 82)
+  }, [tags, ajoutTag, carte.id])
   const [mesEspaces, setMesEspaces] = useState(carte.espaces || [])
   const champNote = carte.type === 'note' ? 'texte' : 'note'
   const [note, setNote] = useState(carte[champNote] || '')
@@ -747,7 +759,10 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
             <p className="dp-date">{dateRelative(carte.creeLe)}</p>
 
             <div className="dp-label">Tags</div>
-            <div className="tags-editeur">
+            <div
+              ref={listeTagsRef}
+              className={'tags-editeur' + (tagsDebordent && !tagsDeplies ? ' tags-replies' : '')}
+            >
               <button className="tag-ajout" onClick={() => setAjoutTag(true)}>+ tag</button>
               {tags.map(t => (
                 <span key={t} className="tag-chip">
@@ -777,6 +792,12 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
                 {suggestionsTags(tousTags, tags, nouveauTag).map(t => <option key={t} value={t} />)}
               </datalist>
             </div>
+            {tagsDebordent && (
+              <button
+                className="tags-plus"
+                onClick={() => setTagsDeplies(v => !v)}
+              >{tagsDeplies ? 'Réduire ▲' : 'Tout afficher ▼'}</button>
+            )}
 
             <div className="dp-label">Note</div>
             <textarea
@@ -788,13 +809,21 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
               <>
                 <div className="dp-label">Espaces</div>
                 <div className="espaces-editeur">
-                  {espaces.map(e => (
-                    <button
-                      key={e.id}
-                      className={'espace-toggle' + (mesEspaces.includes(e.id) ? ' actif' : '')}
-                      onClick={() => basculerEspace(e.id)}
-                    >{mesEspaces.includes(e.id) ? '✓ ' : '+ '}{e.titre}</button>
-                  ))}
+                  {espaces.map(e => {
+                    // Membre par tag/alias OU épinglé à la main → coché d'office.
+                    const membre = estMembreEspace(e, { ...carte, tags, espaces: mesEspaces })
+                    // Appartenance venant du TAG (pas d'un épinglage) → on le
+                    // signale (le clic n'y change rien, c'est le tag qui décide).
+                    const parTag = membre && !mesEspaces.includes(e.id)
+                    return (
+                      <button
+                        key={e.id}
+                        className={'espace-toggle' + (membre ? ' actif' : '') + (parTag ? ' auto' : '')}
+                        title={parTag ? 'Membre via un tag de la carte' : undefined}
+                        onClick={() => basculerEspace(e.id)}
+                      >{membre ? '✓ ' : '+ '}{e.titre}</button>
+                    )
+                  })}
                 </div>
               </>
             )}

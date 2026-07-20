@@ -61,22 +61,40 @@ export function normTag(t) {
   return (t || '').toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
-// Les membres d'un espace : par tag s'il est « intelligent », sinon par
-// épinglage manuel (`espaces`). Fonctionne pour les deux sortes d'espaces.
+// Alias d'appartenance PAR ESPACE (titre → tags supplémentaires, séparés par
+// virgule). Les cartes sont auto-taggées en anglais « long » (« productivity »,
+// « learning »…) alors que certains espaces mymind ont un nom court/FR
+// (« Prod », « Learn »…) → on rattache ici les synonymes courants. Fusionné AU
+// RUNTIME avec `espace.tag` (voir `ciblesEspace`) → modifiable ici SANS migrer
+// les espaces déjà en Drive. Étendre librement (une ligne par espace).
+export const ALIAS_MEMBRE = {
+  'Prod': 'productivity',
+  'Learn': 'learning',
+}
+
+// Tous les tags-cibles d'un espace « intelligent » : son propre `tag`
+// (posé au semis) UNION les alias runtime ci-dessus, le tout normalisé.
+export function ciblesEspace(espace) {
+  if (!espace) return []
+  const brut = [espace.tag || '', ALIAS_MEMBRE[espace.titre] || ''].join(',')
+  return brut.split(',').map(normTag).filter(Boolean)
+}
+
+// Une carte est-elle membre de cet espace ? Par tag (un des cibles/alias) OU
+// par épinglage manuel (`espaces`). Sert au panneau de détail ET à la liste.
+export function estMembreEspace(espace, carte) {
+  if (!espace || !carte) return false
+  if ((carte.espaces || []).includes(espace.id)) return true
+  const cibles = ciblesEspace(espace)
+  return cibles.length > 0 && (carte.tags || []).some(t => cibles.includes(normTag(t)))
+}
+
+// Les membres d'un espace : par tag s'il est « intelligent » (tag + alias),
+// sinon par épinglage manuel (`espaces`). Union des deux → l'épinglage manuel
+// fonctionne aussi sur les spaces par tag.
 export function membresEspace(espace, cartes) {
   if (!espace) return []
-  if (espace.tag) {
-    // Space « intelligent » : une carte en fait partie si elle porte le tag
-    // (un des alias, séparés par des virgules, ex. « ai,ia ») OU si elle y a
-    // été épinglée à la main (panneau de détail). Union des deux → l'épinglage
-    // manuel fonctionne aussi sur les spaces par tag.
-    const cibles = espace.tag.split(',').map(normTag).filter(Boolean)
-    return cartes.filter(c =>
-      (c.espaces || []).includes(espace.id) ||
-      (c.tags || []).some(t => cibles.includes(normTag(t)))
-    )
-  }
-  return cartes.filter(c => (c.espaces || []).includes(espace.id))
+  return cartes.filter(c => estMembreEspace(espace, c))
 }
 
 // Les 22 spaces de mymind à recréer (le titre affiché EST le tag).

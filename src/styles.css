@@ -577,6 +577,20 @@ body {
   border-radius: 999px; padding: 6px 14px; font: inherit; font-size: 13px; color: var(--encre); width: 120px;
 }
 .tag-input:focus { border-style: solid; border-color: hsl(255, 50%, 72%); }
+/* Repli « façon mymind » : ~2 lignes visibles, le reste fondu au bas par un
+   masque en dégradé (les tags du bas paraissent grisés). Le bouton « Tout
+   afficher » (hors du masque) déplie. ~82 px ≈ 2 rangées de puces. */
+.tags-editeur.tags-replies {
+  max-height: 82px; overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, #000 58%, transparent 100%);
+          mask-image: linear-gradient(to bottom, #000 58%, transparent 100%);
+}
+.tags-plus {
+  margin-top: 8px; border: none; background: none; cursor: pointer;
+  color: var(--encre-3); font: inherit; font-size: 12px; font-weight: 600;
+  letter-spacing: .01em; padding: 2px 0;
+}
+.tags-plus:hover { color: var(--encre); }
 
 .note-editeur {
   width: 100%; min-height: 84px; resize: vertical;
@@ -594,6 +608,9 @@ body {
 }
 .espace-toggle:hover { color: var(--encre); box-shadow: var(--ombre-sm); }
 .espace-toggle.actif { background: hsl(175, 45%, 92%); color: hsl(175, 40%, 30%); border-color: hsl(175, 45%, 80%); }
+/* Membre AUTOMATIQUE (via un tag de la carte, pas un épinglage manuel) :
+   coché mais légèrement plus discret, pour distinguer du choix explicite. */
+.espace-toggle.auto { background: hsl(175, 35%, 95%); border-style: dashed; }
 
 .dp-actions {
   display: flex; justify-content: flex-end; gap: 10px;
