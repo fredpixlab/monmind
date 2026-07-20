@@ -1778,13 +1778,17 @@ export default function App() {
         {vue === 'tout' && (
           <>
             <div className="hero">
-              <input
-                className="hero-recherche"
-                type="search"
-                placeholder="Rechercher dans mon coffre…"
-                value={recherche}
-                onChange={e => setRecherche(e.target.value)}
-              />
+              <div className="hero-champ">
+                <input
+                  className="hero-recherche"
+                  type="search"
+                  placeholder="Rechercher dans mon coffre…"
+                  value={recherche}
+                  onChange={e => setRecherche(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="hero-sous">
               {ocr.total > 0 && ocr.faites < ocr.total && (
                 <p className="hero-ocr" title="Texte lu dans les images (OCR). Se complète au fil des synchros et de la passe Apple mensuelle.">
                   Reconnaissance du texte des images : {ocr.faites} / {ocr.total}

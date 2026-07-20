@@ -113,33 +113,39 @@ body {
 
 /* ---------- Hero de recherche (grand serif italique) ---------- */
 
-.hero {
-  /* Reste visible en haut pendant le défilement (façon mymind).
-     margin négatif + padding = le fond couvre toute la largeur de la zone
-     (gouttières comprises) pour masquer les cartes qui défilent dessous. */
-  position: sticky; top: 0; z-index: 12;
-  margin: 0 -32px; padding: 16px 40px 14px;
-  background: hsla(228, 16%, 93%, .82);
-  -webkit-backdrop-filter: saturate(1.6) blur(12px);
-  backdrop-filter: saturate(1.6) blur(12px);
-  box-shadow: 0 10px 20px -14px hsla(222, 40%, 15%, .25);
+/* Capsule de recherche façon mymind : arrondie, centrée, fond grisé dépoli.
+   Le bloc .hero est « sticky » (son parent .zone est haut → il tient tout le
+   défilement) ; il ne contient QUE la capsule → celle-ci reste visible en haut,
+   les cartes glissent dessous. L'astuce et l'OCR sont dans .hero-sous, un frère
+   qui défile normalement. */
+.hero { position: sticky; top: 12px; z-index: 12; padding: 10px 0 0; text-align: center; }
+.hero-sous { text-align: center; padding: 0 0 22px; }
+.hero-champ {
+  width: 100%; max-width: 760px; margin: 0 auto;
+  padding: 16px 32px; border-radius: 46px; text-align: left;
+  background: hsla(228, 18%, 95%, .78);
+  border: 1px solid hsla(0, 0%, 100%, .55);
+  -webkit-backdrop-filter: saturate(1.6) blur(14px);
+  backdrop-filter: saturate(1.6) blur(14px);
+  box-shadow: 0 8px 28px -10px hsla(222, 40%, 15%, .22),
+              0 2px 6px hsla(222, 40%, 15%, .07);
 }
 .hero-recherche {
-  width: 100%; max-width: 900px;
+  width: 100%;
   border: none; outline: none; background: transparent;
   font-family: var(--serif); font-style: italic; font-weight: 400;
-  font-size: clamp(34px, 5vw, 58px); line-height: 1.05;
+  font-size: clamp(26px, 3.2vw, 40px); line-height: 1.1;
   letter-spacing: -0.01em; color: var(--encre);
   padding: 0;
 }
 .hero-recherche::placeholder { color: hsl(222, 12%, 72%); font-style: italic; }
 .hero-recherche::-webkit-search-cancel-button { -webkit-appearance: none; }
 .hero-ocr {
-  margin: 10px 2px 0; font-size: 12.5px; color: var(--encre-2);
+  margin: 14px auto 0; max-width: 760px; font-size: 12.5px; color: var(--encre-2);
   letter-spacing: .01em;
 }
 .hero-ocr-ok { color: hsl(150, 34%, 42%); }
-.hero-astuce { margin: 10px 2px 0; font-size: 12.5px; color: var(--encre-3); line-height: 1.5; }
+.hero-astuce { margin: 9px auto 0; max-width: 760px; font-size: 12.5px; color: var(--encre-3); line-height: 1.5; }
 .hero-astuce code {
   background: hsl(228, 16%, 92%); color: var(--encre-2);
   padding: 1px 6px; border-radius: 6px; font-size: 12px;
@@ -845,8 +851,10 @@ body {
   .grille-col { gap: 16px; }
   .brique { margin-bottom: 16px; }
   .nav-haut { padding: 14px 4px 6px; gap: 18px; }
-  .hero { margin: 0 -18px; padding: 12px 26px 12px; }
-  .hero-recherche { font-size: 30px; }
+  .hero { padding: 8px 0 0; }
+  .hero-sous { padding: 0 0 14px; }
+  .hero-champ { padding: 13px 22px; border-radius: 34px; }
+  .hero-recherche { font-size: 24px; }
 }
 
 /* ---------- Bandeau « Annuler » (suppression) ---------- */
