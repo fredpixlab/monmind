@@ -331,11 +331,21 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
   const [tagsDeplies, setTagsDeplies] = useState(false)
   const [tagsDebordent, setTagsDebordent] = useState(false)
   const listeTagsRef = useRef(null)
-  // `scrollHeight` = hauteur du contenu COMPLET (ignore le `max-height` du
-  // repli) → comparaison stable, que la liste soit repliée ou dépliée.
+  // Mesure du débordement via ResizeObserver : le panneau d'infos est FERMÉ
+  // par défaut (`display:none` → hauteur 0 au montage) ; une simple mesure au
+  // montage renverrait 0 et la liste ne se replierait jamais. Le RO se
+  // redéclenche dès que l'élément (re)devient visible ou change de taille →
+  // mesure fiable. `scrollHeight` = contenu COMPLET (ignore le `max-height`
+  // du repli) → seuil stable, replié comme déplié. ~82 px ≈ 2 rangées.
   useEffect(() => {
     const el = listeTagsRef.current
-    if (el) setTagsDebordent(el.scrollHeight > 82)
+    if (!el) return
+    const mesurer = () => setTagsDebordent(el.scrollHeight > 82)
+    mesurer()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(mesurer)
+    ro.observe(el)
+    return () => ro.disconnect()
   }, [tags, ajoutTag, carte.id])
   const [mesEspaces, setMesEspaces] = useState(carte.espaces || [])
   const champNote = carte.type === 'note' ? 'texte' : 'note'
@@ -1105,6 +1115,58 @@ function useSync() {
   return { etat, brancher, planifier, lancer, progression, permanent }
 }
 
+// « Tirer pour rafraîchir » (tactile, façon iOS). On écoute les gestes au
+// niveau de la fenêtre (le document lui-même défile). On n'engage QUE si :
+// (1) on est tout en haut (`scrollTop <= 0`), (2) le doigt descend, (3) le
+// mouvement est franchement VERTICAL (sinon on laisserait passer le défilement
+// horizontal de la barre de tags/espaces). On garde l'état courant dans un
+// `ref` pour n'attacher les écouteurs qu'UNE fois (pas à chaque pixel tiré).
+function usePullRefresh(onRefresh, actif) {
+  const [tire, setTire] = useState(0)          // px de tirage (pour l'indicateur)
+  const [rafraichit, setRafraichit] = useState(false)
+  const S = useRef({ suivi: false, y0: 0, x0: 0, tire: 0, raf: false })
+  useEffect(() => { S.current.raf = rafraichit }, [rafraichit])
+  useEffect(() => {
+    if (!actif) return
+    const SEUIL = 70, MAX = 110, RESIST = 0.5
+    const scrollTop = () => (document.scrollingElement ? document.scrollingElement.scrollTop : window.scrollY) || 0
+    const debut = (e) => {
+      if (S.current.raf || e.touches.length !== 1 || scrollTop() > 0) { S.current.suivi = false; return }
+      S.current.suivi = true; S.current.y0 = e.touches[0].clientY; S.current.x0 = e.touches[0].clientX
+    }
+    const bouge = (e) => {
+      if (!S.current.suivi || S.current.raf) return
+      const dy = e.touches[0].clientY - S.current.y0
+      const dx = e.touches[0].clientX - S.current.x0
+      if (dy <= 0 || Math.abs(dx) > dy || scrollTop() > 0) { S.current.suivi = false; S.current.tire = 0; setTire(0); return }
+      if (e.cancelable) e.preventDefault()          // on prend la main → pas de rebond natif
+      const t = Math.min(dy * RESIST, MAX)
+      S.current.tire = t; setTire(t)
+    }
+    const fin = () => {
+      if (!S.current.suivi) return
+      S.current.suivi = false
+      if (S.current.tire >= SEUIL && !S.current.raf) {
+        setRafraichit(true); setTire(SEUIL); S.current.tire = SEUIL
+        Promise.resolve(onRefresh && onRefresh()).catch(() => {}).finally(() => {
+          setRafraichit(false); setTire(0); S.current.tire = 0
+        })
+      } else { S.current.tire = 0; setTire(0) }
+    }
+    window.addEventListener('touchstart', debut, { passive: true })
+    window.addEventListener('touchmove', bouge, { passive: false })
+    window.addEventListener('touchend', fin, { passive: true })
+    window.addEventListener('touchcancel', fin, { passive: true })
+    return () => {
+      window.removeEventListener('touchstart', debut)
+      window.removeEventListener('touchmove', bouge)
+      window.removeEventListener('touchend', fin)
+      window.removeEventListener('touchcancel', fin)
+    }
+  }, [actif, onRefresh])
+  return { tire, rafraichit }
+}
+
 function StatutSync({ etat, brancher, lancer }) {
   if (etat === 'non_configure') return <span className="rail-sync" title="Local">●</span>
   if (etat === 'deconnecte' || etat === 'inconnu')
@@ -1461,6 +1523,10 @@ export default function App() {
   const dragCompteur = useRef(0)
   const timerDepot = useRef(null)
   const sync = useSync()
+  // Tirer pour rafraîchir (tactile) — actif seulement en haut de la liste et
+  // quand aucun panneau/overlay n'est ouvert (sinon le geste s'y appliquerait),
+  // et seulement si le Drive est configuré (rien à synchroniser en local pur).
+  const pull = usePullRefresh(sync.lancer, !ouverte && !composeurOuvert && !importOuvert && sync.etat !== 'non_configure')
 
   // Suppression avec fenêtre d'annulation : la carte part en corbeille
   // (récupérable 30 jours) et un bandeau « Annuler » s'affiche ~7 s.
@@ -1773,6 +1839,17 @@ export default function App() {
   return (
     <div className="app" onDragEnter={onDragEnter} onDragOver={onDragOver}
          onDragLeave={onDragLeave} onDrop={onDrop}>
+      {/* ---- Tirer pour rafraîchir (tactile) ---- */}
+      {(pull.tire > 0 || pull.rafraichit) && (
+        <div className="pull-refresh" aria-hidden="true"
+             style={{
+               transform: `translateX(-50%) translateY(${(pull.rafraichit ? 70 : pull.tire) - 6}px)`,
+               opacity: pull.rafraichit ? 1 : Math.min(1, pull.tire / 70)
+             }}>
+          <span className={'pull-refresh-icone' + (pull.rafraichit ? ' tourne' : '')}
+                style={pull.rafraichit ? undefined : { transform: `rotate(${Math.min(pull.tire / 70, 1) * 300}deg)` }}>↻</span>
+        </div>
+      )}
       {/* ---- Rail gauche ---- */}
       <aside className="rail">
         <div className="rail-orbe" />
@@ -1801,6 +1878,15 @@ export default function App() {
                   onClick={() => setVue('espaces')}>Espaces</button>
           <button className={'nav-lien' + (vue === 'serendipity' ? ' actif' : '')}
                   onClick={lancerSerendipity}>Serendipity</button>
+          {sync.etat !== 'non_configure' && (
+            <button
+              className="nav-refresh"
+              title={sync.etat === 'sync' ? 'Synchronisation…' : 'Rafraîchir (synchroniser avec Google Drive)'}
+              aria-label="Rafraîchir"
+              disabled={sync.etat === 'sync'}
+              onClick={sync.lancer}
+            ><span className={'nav-refresh-icone' + (sync.etat === 'sync' ? ' tourne' : '')}>↻</span></button>
+          )}
         </nav>
 
         {/* ====== VUE TOUT ====== */}

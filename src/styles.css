@@ -111,6 +111,34 @@ body {
 .nav-lien:hover { color: var(--encre-2); }
 .nav-lien.actif { color: var(--encre); font-weight: 600; }
 
+/* Bouton « rafraîchir » (desktop) : rond discret aligné à droite de la nav.
+   Sur téléphone il est masqué → là c'est le « tirer pour rafraîchir » qui prend
+   le relais (voir .pull-refresh). */
+.nav-refresh {
+  width: 34px; height: 34px; border: 1px solid var(--trait); background: white;
+  border-radius: 50%; cursor: pointer; color: var(--encre-2); font-size: 17px;
+  display: flex; align-items: center; justify-content: center; padding: 0;
+  transition: all .15s; align-self: center;
+}
+.nav-refresh:hover { color: var(--encre); box-shadow: var(--ombre-sm); }
+.nav-refresh:disabled { cursor: default; opacity: .8; }
+.nav-refresh-icone { display: inline-block; line-height: 1; }
+.nav-refresh-icone.tourne { animation: tourner-refresh .8s linear infinite; }
+@keyframes tourner-refresh { to { transform: rotate(360deg); } }
+
+/* Indicateur du « tirer pour rafraîchir » : pastille fixée en haut au centre,
+   descendue par le geste (translateY inline). Tourne au fil du tirage, puis
+   spinner continu pendant la synchro. */
+.pull-refresh {
+  position: fixed; top: 0; left: 50%; z-index: 60;
+  width: 38px; height: 38px; border-radius: 50%;
+  background: white; box-shadow: 0 4px 14px hsla(222, 30%, 20%, .18);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--encre-2); pointer-events: none;
+}
+.pull-refresh-icone { font-size: 19px; line-height: 1; display: inline-block; }
+.pull-refresh-icone.tourne { animation: tourner-refresh .8s linear infinite; }
+
 /* ---------- Hero de recherche (grand serif italique) ---------- */
 
 /* Capsule de recherche façon mymind : arrondie, centrée, fond grisé dépoli.
@@ -868,6 +896,7 @@ body {
   .grille-col { gap: 16px; }
   .brique { margin-bottom: 16px; }
   .nav-haut { padding: 14px 4px 6px; gap: 18px; }
+  .nav-refresh { display: none; } /* téléphone : « tirer pour rafraîchir » à la place */
   .hero { padding: 8px 0 0; }
   .hero-sous { padding: 0 0 14px; }
   .hero-champ { padding: 13px 22px; border-radius: 34px; }
