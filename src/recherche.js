@@ -44,7 +44,13 @@ export function construireIndex(cartes) {
     },
     searchOptions: {
       prefix: true,          // recherche au fil de la frappe
-      fuzzy: 0.2,            // tolère ~20 % de caractères en écart (fautes de frappe)
+      // Tolérance aux fautes PROPORTIONNÉE à la longueur du mot.
+      // Avec 0.2 fixe, un mot de 4 lettres autorisait 1 faute (4×0.2≈1) :
+      // « bike » matchait alors « Nike », « hike », « like »… (sosies à 1 lettre).
+      // On désactive donc la floue sur les mots courts (≤ 4 lettres) et on la
+      // garde au-delà, là où une vraie faute de frappe est plausible. Le préfixe
+      // reste actif partout (« bike » trouve toujours « bikes »).
+      fuzzy: (terme) => (terme.length <= 4 ? false : 0.2),
       combineWith: 'AND'     // tous les mots doivent matcher (recherche précise)
     }
   })
