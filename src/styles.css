@@ -113,7 +113,17 @@ body {
 
 /* ---------- Hero de recherche (grand serif italique) ---------- */
 
-.hero { padding: 10px 8px 22px; }
+.hero {
+  /* Reste visible en haut pendant le défilement (façon mymind).
+     margin négatif + padding = le fond couvre toute la largeur de la zone
+     (gouttières comprises) pour masquer les cartes qui défilent dessous. */
+  position: sticky; top: 0; z-index: 12;
+  margin: 0 -32px; padding: 16px 40px 14px;
+  background: hsla(228, 16%, 93%, .82);
+  -webkit-backdrop-filter: saturate(1.6) blur(12px);
+  backdrop-filter: saturate(1.6) blur(12px);
+  box-shadow: 0 10px 20px -14px hsla(222, 40%, 15%, .25);
+}
 .hero-recherche {
   width: 100%; max-width: 900px;
   border: none; outline: none; background: transparent;
@@ -835,6 +845,7 @@ body {
   .grille-col { gap: 16px; }
   .brique { margin-bottom: 16px; }
   .nav-haut { padding: 14px 4px 6px; gap: 18px; }
+  .hero { margin: 0 -18px; padding: 12px 26px 12px; }
   .hero-recherche { font-size: 30px; }
 }
 
