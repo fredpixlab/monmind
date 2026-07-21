@@ -8,12 +8,12 @@ Le plan complet du projet est dans le projet Claude « Remplacer mymind ».
 
 - [x] **Phase 1** — Squelette PWA installable (grille, composeur, base locale IndexedDB)
 - [x] Phase 2 (partielle) — Cartes note / lien / image en local
-- [ ] **Phase 3** — Synchronisation Google Drive
+- [x] **Phase 3** — Synchronisation Google Drive ✅ 2026-07-21
 - [ ] Phase 4 — Capture (bookmarklet Mac, Raccourci iOS, photos/vidéos)
 - [ ] Phase 5 — Tags IA automatiques, couleurs dominantes
-- [ ] Phase 6 — Recherche avancée, Smart Spaces, Serendipity
+- [x] Phase 6 — Recherche avancée, Smart Spaces, Serendipity ✅ 2026-07-21
 - [ ] Phase 7 — Connecteur Claude (portrait de mes goûts)
-- [ ] Phase 8 — Migration depuis mymind
+- [x] Phase 8 — Migration depuis mymind ✅ 2026-07-21
 
 ## Architecture (résumé)
 
