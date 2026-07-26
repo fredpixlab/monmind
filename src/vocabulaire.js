@@ -47,16 +47,26 @@ export const canon = t => FUSIONS[normTag(t)] || normTag(t)
 // même si leur contenu ne sort jamais du coffre.
 export function construireVocabulaire(cartes) {
   const info = {}
+  const manuels = new Set()
+  let deMymind = 0
   for (const c of cartes) {
     if (c.type === 'espace') continue
-    for (const t of (c.tags || []).map(canon).filter(Boolean)) {
+    const tags = (c.tags || []).map(canon).filter(Boolean)
+    for (const t of tags) {
       info[t] = info[t] || { n: 0, types: new Set() }
       info[t].n++
       info[t].types.add(c.type)
     }
+    // Une carte que mymind n'a jamais touchée ne porte que des tags posés à
+    // la main : ils sont conservés quoi qu'en dise la statistique. Sans ça, un
+    // tag personnel posé sur une seule note (« futur ») ressemble à du bruit
+    // et disparaît — inacceptable pour une suppression définitive.
+    if (c.source === 'mymind') deMymind++
+    else tags.forEach(t => manuels.add(t))
   }
   const coffre = new Set(Object.entries(info)
     .filter(([, i]) => i.types.size > 1).map(([t]) => t))
+  manuels.forEach(t => coffre.add(t))
   REPECHES.map(canon).forEach(t => { if (info[t]) coffre.add(t) })
   ORGANISATION.map(canon).forEach(t => { if (info[t]) coffre.add(t) })
   INTOUCHABLES.map(canon).forEach(t => { if (info[t]) coffre.add(t) })
@@ -68,7 +78,10 @@ export function construireVocabulaire(cartes) {
 
   const comptes = {}
   for (const [t, i] of Object.entries(info)) comptes[t] = i.n
-  return { coffre, corpus, comptes }
+  // `deMymind` sert de garde-fou à l'appelant : si aucune carte n'est marquée,
+  // cet appareil ne sait pas distinguer l'importé du manuel (voir drive.js,
+  // `recevoirCarte`) et le ménage n'a rien à faire là.
+  return { coffre, corpus, comptes, deMymind, manuels: manuels.size }
 }
 
 // Ce que deviendrait la liste de tags d'une carte après ménage.

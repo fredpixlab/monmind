@@ -25,7 +25,7 @@ export function lireCartes(srcMd) {
     // Mêmes exclusions que l'app : les espaces ne sont pas du contenu, et la
     // corbeille ne doit pas peser sur le vocabulaire.
     if (m.type === 'espace' || m.supprime) continue
-    cartes.push({ id: f.replace(/\.md$/, ''), type: m.type, tags: m.tags || [] })
+    cartes.push({ id: f.replace(/\.md$/, ''), type: m.type, tags: m.tags || [], source: m.source || '' })
   }
   return cartes
 }

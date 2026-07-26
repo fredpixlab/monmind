@@ -1065,3 +1065,4 @@ body {
 .menage-avant { color: var(--encre-3); text-decoration: line-through; }
 .menage-apres { color: var(--encre); font-weight: 600; }
 .menage-actions { display: flex; align-items: center; gap: 14px; margin-top: 14px; }
+.menage-alerte { color: hsl(6, 60%, 44%); }

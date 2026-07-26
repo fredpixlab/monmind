@@ -1550,9 +1550,21 @@ function VueStats({ contenu, tousTags, espaces, ocr, onOuvrir }) {
           <>
             <p className="stats-note">
               <strong>{menage.aTraiter.length}</strong> carte{menage.aTraiter.length > 1 ? 's' : ''} à nettoyer ·
-              {' '}{menage.tagsAvant} tags → <strong>{menage.tagsApres}</strong> ·
-              {' '}vocabulaire conservé : {menage.vocab.coffre.size} tags.
+              {' '}{menage.tagsAvant} étiquettes posées → <strong>{menage.tagsApres}</strong> ·
+              {' '}vocabulaire conservé : <strong>{menage.vocab.coffre.size} tags différents</strong>
+              {' '}(dont {menage.vocab.manuels} posés à la main, gardés quoi qu'il arrive).
             </p>
+            {menage.vocab.deMymind === 0 ? (
+              <p className="stats-note menage-alerte">
+                ⚠️ Aucune carte n'est reconnue comme importée de mymind sur cet appareil.
+                Sans cette provenance, impossible de distinguer un label automatique d'un
+                tag que tu as posé — fais le ménage depuis le Mac où tu as fait l'import.
+              </p>
+            ) : (
+              <p className="stats-note">
+                {menage.vocab.deMymind} cartes reconnues comme importées de mymind.
+              </p>
+            )}
             <p className="stats-note">
               Le plus souvent retirés : {menage.topRetires.map(([t, n]) => `${t} (${n})`).join(' · ')}
             </p>
@@ -1564,7 +1576,8 @@ function VueStats({ contenu, tousTags, espaces, ocr, onOuvrir }) {
               </p>
             ))}
             <div className="menage-actions">
-              <button className="bouton-principal" onClick={appliquerTags}>
+              <button className="bouton-principal" onClick={appliquerTags}
+                      disabled={menage.vocab.deMymind === 0}>
                 Appliquer aux {menage.aTraiter.length} cartes
               </button>
               <button className="tags-plus" onClick={() => setMenage(null)}>Annuler</button>

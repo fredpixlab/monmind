@@ -697,6 +697,12 @@ async function recevoirCarte(id, dist) {
     espaces: meta.espaces || [],
     tag: meta.tag || '',
     texteImage: meta.texteImage || '',
+    // Provenance : conservée à la RÉCEPTION, sinon elle se perd à chaque
+    // aller-retour Drive (la carte revient sans `source`, puis repart avec
+    // une source vide et l'efface pour tout le monde). C'est ce marqueur qui
+    // distingue un tag importé de mymind d'un tag posé à la main.
+    source: meta.source || '',
+    sourceId: meta.sourceId || '',
     supprime: meta.supprime ? 1 : 0,
     supprimeLe: meta.supprimeLe || 0,
     creeLe: meta.creeLe,
@@ -717,9 +723,7 @@ async function recevoirCarte(id, dist) {
       vignetteNom: meta.vignette || '',
       image: null,
       driveMediaId: dist.media?.id || null,
-      driveVignetteId: dist.vignette?.id || null,
-      source: meta.source || '',
-      sourceId: meta.sourceId || ''
+      driveVignetteId: dist.vignette?.id || null
     })
   } else {
     let image = null
