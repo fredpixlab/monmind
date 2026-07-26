@@ -6,6 +6,7 @@ import { ajouterMediaDepuisFichier, estMediaSupporte, estFichierOcr, injecterOcr
 import { sync_configuree, API_BASE } from './config.js'
 import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion, telechargerMediaComplet, rafraichirJeton, purgerCarte, enregistrerSession, aSessionBackend, pousserVignette } from './drive.js'
 import { vignetteVideo } from './vignette.js'
+import { construireVocabulaire, analyserNettoyage } from './vocabulaire.js'
 import { lancerImport } from './import-run.js'
 
 // ---------------------------------------------------------------
@@ -1435,6 +1436,30 @@ function ImportMymind({ pret, brancher, fermer, onModif }) {
 // --- Vue Statistiques + diagnostic -------------------------------
 function VueStats({ contenu, tousTags, espaces, ocr, onOuvrir }) {
   const s = useMemo(() => calculerStats(contenu, tousTags, espaces, ocr), [contenu, tousTags, espaces, ocr])
+
+  // --- Ménage des tags (labels de vision hérités de mymind) ---------
+  // Deux temps VOLONTAIREMENT séparés : « Analyser » ne fait que simuler et
+  // rend compte ; rien n'est écrit tant que « Appliquer » n'a pas été cliqué.
+  const [menage, setMenage] = useState(null)
+  const [avancement, setAvancement] = useState(null)
+
+  function analyserTags() {
+    const vocab = construireVocabulaire(contenu)
+    setMenage({ ...analyserNettoyage(contenu, vocab), vocab })
+  }
+
+  async function appliquerTags() {
+    if (!menage) return
+    const liste = menage.aTraiter
+    setAvancement({ fait: 0, total: liste.length })
+    for (let i = 0; i < liste.length; i++) {
+      await majCarte(liste[i].id, { tags: liste[i].apres })
+      if (i % 20 === 0 || i === liste.length - 1) setAvancement({ fait: i + 1, total: liste.length })
+    }
+    setMenage(null)
+    setAvancement({ fait: liste.length, total: liste.length, fini: true })
+  }
+
   const tuiles = [
     { n: s.total, l: 'cartes' },
     { n: s.parType.image, l: 'images' },
@@ -1503,6 +1528,56 @@ function VueStats({ contenu, tousTags, espaces, ocr, onOuvrir }) {
               ))}
             </div>
           </>
+        )}
+      </div>
+
+      {/* Ménage des tags : mymind collait des labels de vision sur les images
+          (« gesture », « eyebrow »…). On ne garde que les tags de sujet. */}
+      <div className="stats-bloc">
+        <h2 className="stats-titre">Ménage des tags</h2>
+        {!menage && !avancement && (
+          <>
+            <p className="stats-note">
+              Les tags automatiques hérités de mymind (« gesture », « flash photography »…)
+              encombrent tes cartes. L'analyse ci-dessous ne modifie rien : elle montre
+              d'abord ce qui serait retiré.
+            </p>
+            <button className="bouton-principal" onClick={analyserTags}>Analyser mes tags</button>
+          </>
+        )}
+
+        {menage && !avancement && (
+          <>
+            <p className="stats-note">
+              <strong>{menage.aTraiter.length}</strong> carte{menage.aTraiter.length > 1 ? 's' : ''} à nettoyer ·
+              {' '}{menage.tagsAvant} tags → <strong>{menage.tagsApres}</strong> ·
+              {' '}vocabulaire conservé : {menage.vocab.coffre.size} tags.
+            </p>
+            <p className="stats-note">
+              Le plus souvent retirés : {menage.topRetires.map(([t, n]) => `${t} (${n})`).join(' · ')}
+            </p>
+            {menage.aTraiter.slice(0, 3).map(c => (
+              <p className="stats-note menage-exemple" key={c.id}>
+                <span className="menage-avant">{c.avant.join(', ')}</span>
+                {' → '}
+                <span className="menage-apres">{c.apres.join(', ') || '(aucun)'}</span>
+              </p>
+            ))}
+            <div className="menage-actions">
+              <button className="bouton-principal" onClick={appliquerTags}>
+                Appliquer aux {menage.aTraiter.length} cartes
+              </button>
+              <button className="tags-plus" onClick={() => setMenage(null)}>Annuler</button>
+            </div>
+          </>
+        )}
+
+        {avancement && (
+          <p className="stats-note">
+            {avancement.fini
+              ? `✓ ${avancement.total} cartes nettoyées. La synchronisation vers Drive se fait carte par carte : laisse l'app ouverte, elle peut prendre une vingtaine de minutes.`
+              : `Nettoyage… ${avancement.fait} / ${avancement.total}`}
+          </p>
         )}
       </div>
 

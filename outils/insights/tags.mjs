@@ -1,79 +1,49 @@
 // ---------------------------------------------------------------
-// Vocabulaire retenu — Phase 7.
-// mymind collait des labels de vision par ordinateur sur chaque image
-// (« gesture », « eyebrow », « flash photography »…). Ils noient les tags
-// que Fred a réellement posés. Règle de tri, validée sur les données :
+// Génère la liste des tags retenus à partir des .md rapatriés du Drive.
 //
-//   un tag vu sur PLUSIEURS TYPES de cartes (note, lien, vidéo, image) est
-//   un tag de SUJET ; un tag vu uniquement sur des images est un label de
-//   médium — mymind ne taguait automatiquement que les visuels.
+// La RÈGLE et les ajustements vivent dans `src/vocabulaire.js`, partagé avec
+// l'app (fonction « Ménage des tags » de la vue 📊) : une seule source de
+// vérité, sinon le corpus et le coffre finiraient par diverger.
 //
-// La règle sépare 356 tags de sujet de 5087 labels. Elle se trompe dans les
-// deux sens à la marge : d'où les deux listes d'ajustement ci-dessous, seule
-// partie « à la main », validée avec Fred le 26/07.
-//
-// Sortie : ~/MonCoffre-insights/tags-retenus.json (hors dépôt : c'est le
-// vocabulaire personnel de Fred, et ce repo est public). Régénérable à tout
-// moment par `node outils/insights/tags.mjs`.
+// Sortie : ~/MonCoffre-insights/tags-retenus.json — hors dépôt, car ce repo
+// est public et 350 mots-clés personnels dessinent un portrait assez précis.
+// Régénérable à tout moment : node outils/insights/tags.mjs
 // ---------------------------------------------------------------
 import fs from 'fs'
 import path from 'path'
+import { construireVocabulaire, canon } from '../../src/vocabulaire.js'
 
-// Labels de vision qui ont franchi la règle (vus sur plusieurs types par accident).
-export const RETIRES = ['sky', 'water', 'graphics', 'black', 'white', 'wood',
-  'human body', 'infrastructure', 'comfort', 'world']
+export { canon }
 
-// Catégories esthétiques recalées à tort : elles ne PEUVENT apparaître que
-// sur des images, mais décrivent un goût, pas un objet photographié.
-export const REPECHES = ['art', 'illustration', 'black-and-white']
-
-// Même notion, deux graphies : on ramène la clé à sa forme canonique.
-export const FUSIONS = { ia: 'ai', cinema: 'movies' }
-
-// Utiles DANS l'app (tri, intentions) mais muets sur les goûts : gardés dans
-// le coffre, écartés du corpus qui sert au portrait.
-export const ORGANISATION = ['read later', 'watch later', 'screenshot', 'video']
-
-export const norm = t => String(t || '').normalize('NFD')
-  .replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
-export const canon = t => FUSIONS[norm(t)] || norm(t)
-
-// ---- Génération de la liste (lit les .md rapatriés) -------------
-export function construire(srcMd) {
-  const info = {}
+// Lit les .md et en tire la forme minimale attendue par le vocabulaire.
+export function lireCartes(srcMd) {
+  const cartes = []
   for (const f of fs.readdirSync(srcMd).filter(f => f.endsWith('.md'))) {
     const c = fs.readFileSync(path.join(srcMd, f), 'utf8')
     const fin = c.indexOf('\n---\n', 4); if (fin < 0) continue
     let m; try { m = JSON.parse(c.slice(4, fin)) } catch { continue }
+    // Mêmes exclusions que l'app : les espaces ne sont pas du contenu, et la
+    // corbeille ne doit pas peser sur le vocabulaire.
     if (m.type === 'espace' || m.supprime) continue
-    // Les cartes #private comptent ici : leurs tags de vision doivent être
-    // nettoyés comme les autres, même si leur contenu ne sort jamais du coffre.
-    for (const t of (m.tags || []).map(canon).filter(Boolean)) {
-      info[t] = info[t] || { n: 0, types: new Set() }
-      info[t].n++; info[t].types.add(m.type)
-    }
+    cartes.push({ id: f.replace(/\.md$/, ''), type: m.type, tags: m.tags || [] })
   }
-  const auto = Object.entries(info).filter(([, i]) => i.types.size > 1).map(([t]) => t)
-  const coffre = new Set([...auto, ...REPECHES.map(canon), ...ORGANISATION.map(canon)])
-  RETIRES.map(canon).forEach(t => coffre.delete(t))
-  const corpus = new Set(coffre)
-  ORGANISATION.map(canon).forEach(t => corpus.delete(t))
-  const tri = s => [...s].sort((a, b) => (info[b]?.n || 0) - (info[a]?.n || 0))
-  return {
-    genereLe: new Date().toISOString().slice(0, 10),
-    regle: 'tag vu sur plusieurs types de cartes, + repêchages − retraits',
-    fusions: FUSIONS,
-    coffre: tri(coffre),          // à conserver sur les cartes
-    corpus: tri(corpus),          // à exposer au portrait
-    comptes: Object.fromEntries(tri(coffre).map(t => [t, info[t]?.n || 0]))
-  }
+  return cartes
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const base = path.join(process.env.HOME, 'MonCoffre-insights')
-  const liste = construire(path.join(base, 'md'))
+  const cartes = lireCartes(path.join(base, 'md'))
+  const v = construireVocabulaire(cartes)
+  const tri = s => [...s].sort((a, b) => (v.comptes[b] || 0) - (v.comptes[a] || 0))
+  const liste = {
+    genereLe: new Date().toISOString().slice(0, 10),
+    regle: 'tag vu sur plusieurs types de cartes, + repêchages − retraits (src/vocabulaire.js)',
+    cartes: cartes.length,
+    coffre: tri(v.coffre),   // à conserver sur les cartes
+    corpus: tri(v.corpus),   // à exposer au portrait
+    comptes: Object.fromEntries(tri(v.coffre).map(t => [t, v.comptes[t] || 0]))
+  }
   fs.writeFileSync(path.join(base, 'tags-retenus.json'), JSON.stringify(liste, null, 2))
-  console.log(`coffre : ${liste.coffre.length} tags · corpus : ${liste.corpus.length} tags`)
+  console.log(`${cartes.length} cartes · coffre ${liste.coffre.length} tags · corpus ${liste.corpus.length} tags`)
   console.log('20 premiers :', liste.coffre.slice(0, 20).join(', '))
-  console.log('20 derniers :', liste.coffre.slice(-20).join(', '))
 }

@@ -1058,3 +1058,10 @@ body {
 .dp-titre-champ::placeholder { color: var(--encre-3); font-weight: 600; }
 .dp-titre-champ:hover { background: hsla(222, 20%, 50%, .06); }
 .dp-titre-champ:focus { background: hsla(222, 20%, 50%, .10); }
+
+/* Ménage des tags (vue 📊) : l'aperçu avant/après doit rendre la perte
+   évidente AVANT d'écrire quoi que ce soit — d'où le barré sur l'avant. */
+.menage-exemple { font-size: 13px; line-height: 1.5; }
+.menage-avant { color: var(--encre-3); text-decoration: line-through; }
+.menage-apres { color: var(--encre); font-weight: 600; }
+.menage-actions { display: flex; align-items: center; gap: 14px; margin-top: 14px; }
