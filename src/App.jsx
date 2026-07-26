@@ -1589,6 +1589,13 @@ function VueStats({ contenu, tousTags, espaces, ocr, onOuvrir }) {
             ) : (
               <p className="stats-note">
                 {menage.vocab.deMymind} cartes reconnues comme importées de mymind.
+                {' '}Si ce nombre est trop bas, leur provenance s'est perdue en local :
+                <button className="tags-plus" onClick={reparerProv}>réparer depuis Drive</button>
+                {reparation && (reparation.fini
+                  ? (reparation.erreur
+                      ? ` — échec : ${reparation.erreur}`
+                      : ` — ${reparation.reparees} réparées sur ${reparation.examinees}. Relance l'analyse.`)
+                  : ` — lecture ${reparation.fait} / ${reparation.total}…`)}
               </p>
             )}
             <p className="stats-note">
