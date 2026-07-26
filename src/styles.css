@@ -1066,3 +1066,5 @@ body {
 .menage-apres { color: var(--encre); font-weight: 600; }
 .menage-actions { display: flex; align-items: center; gap: 14px; margin-top: 14px; }
 .menage-alerte { color: hsl(6, 60%, 44%); }
+.menage-secondaire { margin-top: 14px; font-size: 13px; }
+.menage-secondaire .tags-plus { margin: 0 0 0 4px; text-decoration: underline; }

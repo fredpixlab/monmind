@@ -677,6 +677,47 @@ async function envoyerCarte(carte, dist) {
   await db.cartes.update(carte.id, { driveMdId: r.id, driveImgId: imgId })
 }
 
+// Répare la PROVENANCE (`source`/`sourceId`) des cartes locales qui l'ont
+// perdue. Jusqu'au correctif de `recevoirCarte`, seules les cartes à média
+// « à la demande » (distant:1) la conservaient : notes, liens et images
+// revenaient du Drive sans elle, et la renvoyaient vide au premier changement.
+//
+// On relit le .md du Drive (qui fait foi) et on réécrit UNIQUEMENT ces deux
+// champs, sans toucher `modifieLe` : la carte ne doit surtout pas paraître
+// modifiée, sinon on déclencherait un renvoi de tout le coffre.
+export async function reparerProvenance(onProgress) {
+  await garantirDossiers()
+  const locales = await db.cartes.toArray()
+  const aVoir = locales.filter(c => c.type !== 'espace' && !c.supprime && !c.source)
+  if (!aVoir.length) return { examinees: 0, reparees: 0 }
+
+  const fichiers = await listerCartesDrive()
+  const mdParCarte = new Map()
+  for (const f of fichiers) {
+    const cardId = f.appProperties?.cardId
+    if (!cardId || !f.name?.endsWith('.md')) continue
+    mdParCarte.set(cardId, f)
+  }
+
+  let reparees = 0, vues = 0
+  for (const carte of aVoir) {
+    const dist = mdParCarte.get(carte.id)
+    vues++
+    if (onProgress && vues % 10 === 0) onProgress({ fait: vues, total: aVoir.length })
+    if (!dist) continue
+    try {
+      const parsed = parserMd(await telechargerTexte(dist.id))
+      const src = parsed?.meta?.source || ''
+      if (!src) continue
+      // Écriture DIRECTE (pas `majCarte`) : `modifieLe` reste intact.
+      await db.cartes.update(carte.id, { source: src, sourceId: parsed.meta.sourceId || '' })
+      reparees++
+    } catch (e) { console.warn('[provenance]', carte.id, e) }
+  }
+  if (onProgress) onProgress({ fait: aVoir.length, total: aVoir.length })
+  return { examinees: aVoir.length, reparees }
+}
+
 async function recevoirCarte(id, dist) {
   const contenu = await telechargerTexte(dist.md.id)
   const parsed = parserMd(contenu)

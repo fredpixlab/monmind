@@ -4,7 +4,7 @@ import { db, ajouterCarte, supprimerCarte, restaurerCarte, majCarte, estUneUrl, 
 import { construireIndex, rechercher } from './recherche.js'
 import { ajouterMediaDepuisFichier, estMediaSupporte, estFichierOcr, injecterOcr, ocrEnFond } from './ajout-media.js'
 import { sync_configuree, API_BASE } from './config.js'
-import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion, telechargerMediaComplet, rafraichirJeton, purgerCarte, enregistrerSession, aSessionBackend, pousserVignette } from './drive.js'
+import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion, telechargerMediaComplet, rafraichirJeton, purgerCarte, enregistrerSession, aSessionBackend, pousserVignette, reparerProvenance } from './drive.js'
 import { vignetteVideo } from './vignette.js'
 import { construireVocabulaire, analyserNettoyage } from './vocabulaire.js'
 import { lancerImport } from './import-run.js'
@@ -1443,9 +1443,25 @@ function VueStats({ contenu, tousTags, espaces, ocr, onOuvrir }) {
   const [menage, setMenage] = useState(null)
   const [avancement, setAvancement] = useState(null)
 
+  const [reparation, setReparation] = useState(null)
+
   function analyserTags() {
     const vocab = construireVocabulaire(contenu)
     setMenage({ ...analyserNettoyage(contenu, vocab), vocab })
+  }
+
+  // Doit précéder tout ménage : sans provenance, une carte importée passe
+  // pour une carte taguée à la main et garde ses labels automatiques.
+  async function reparerProv() {
+    setReparation({ fait: 0, total: 0 })
+    try {
+      const r = await reparerProvenance(p => setReparation(p))
+      setReparation({ ...r, fini: true })
+      setMenage(null)
+    } catch (e) {
+      console.error('[provenance]', e)
+      setReparation({ erreur: e.message || 'échec', fini: true })
+    }
   }
 
   async function appliquerTags() {
@@ -1543,6 +1559,16 @@ function VueStats({ contenu, tousTags, espaces, ocr, onOuvrir }) {
               d'abord ce qui serait retiré.
             </p>
             <button className="bouton-principal" onClick={analyserTags}>Analyser mes tags</button>
+            <p className="stats-note menage-secondaire">
+              Si l'analyse annonce moins de cartes importées de mymind que tu n'en as
+              réellement, leur provenance s'est perdue en local :
+              <button className="tags-plus" onClick={reparerProv}>réparer depuis Drive</button>
+              {reparation && (reparation.fini
+                ? (reparation.erreur
+                    ? ` — échec : ${reparation.erreur}`
+                    : ` — ${reparation.reparees} cartes réparées sur ${reparation.examinees} examinées.`)
+                : ` — lecture ${reparation.fait} / ${reparation.total}…`)}
+            </p>
           </>
         )}
 
