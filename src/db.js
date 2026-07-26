@@ -114,6 +114,16 @@ function idEspaceTag(nom) {
 // auto-taggées en anglais → alias explicite (plusieurs séparés par virgule).
 const ALIAS_TAG = { 'IA': 'ai,ia' }
 
+// Préfixe des ids d'espaces issus du semis mymind (`idEspaceTag`).
+const PREFIXE_ESPACE_TAG = 'esp-tag-'
+
+// ⚠️ N'EST PLUS APPELÉE AU DÉMARRAGE. Un coffre neuf (celui d'une autre
+// personne de la famille) doit être VIDE : ses espaces à elle viendront de son
+// propre Drive ou de ses créations. Les 22 spaces mymind sont l'historique de
+// Fred : ils vivent déjà dans SON Drive et redescendent par synchro sur
+// n'importe quel appareil. La fonction est gardée comme outil de secours
+// (ré-amorçage manuel depuis une console) — voir `nettoyerSemisSpaces`.
+//
 // Crée (une fois) les spaces-tags manquants. Id déterministe → aucun doublon
 // même si deux appareils sèment avant de se synchroniser (le même id fusionne
 // proprement via last-write-wins). Le drapeau `spacesMymindSemes` évite de
@@ -135,6 +145,34 @@ export async function semerSpacesMymind() {
     }
   }
   await setReglage('spacesMymindSemes', true)
+  return n
+}
+
+// Rattrapage (une fois par navigateur) des coffres qui ont reçu le semis
+// automatique avant qu'on le retire. On efface les 22 espaces mymind
+// UNIQUEMENT si le coffre ne contient AUCUNE carte de contenu : c'est alors un
+// coffre neuf (celui d'une autre personne, ou un navigateur pas encore
+// synchronisé), et ces espaces ne sont que du décor hérité de Fred.
+//
+// ⚠️ SUPPRESSION DURE ET PUREMENT LOCALE (`db.cartes.delete`), surtout PAS
+// `supprimerCarte` : celle-ci pose une pierre tombale qui se propagerait au
+// Drive et effacerait les vrais espaces de Fred sur tous ses appareils. Ici on
+// se contente d'oublier localement ; si les espaces existent dans le Drive de
+// la personne, la synchro les redescend juste après.
+export async function nettoyerSemisSpaces() {
+  if (await getReglage('semisSpacesNettoye', false)) return 0
+  const contenu = await db.cartes.filter(c => c.type !== 'espace').count()
+  let n = 0
+  if (contenu === 0) {
+    const semes = await db.cartes
+      .filter(c => c.type === 'espace' && String(c.id).startsWith(PREFIXE_ESPACE_TAG))
+      .toArray()
+    if (semes.length) {
+      await db.cartes.bulkDelete(semes.map(c => c.id))
+      n = semes.length
+    }
+  }
+  await setReglage('semisSpacesNettoye', true)
   return n
 }
 

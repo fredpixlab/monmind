@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { db, ajouterCarte, supprimerCarte, restaurerCarte, majCarte, estUneUrl, creerEspace, supprimerEspace, basculerEpingle, membresEspace, estMembreEspace, normTag, semerSpacesMymind, DUREE_CORBEILLE } from './db.js'
+import { db, ajouterCarte, supprimerCarte, restaurerCarte, majCarte, estUneUrl, creerEspace, supprimerEspace, basculerEpingle, membresEspace, estMembreEspace, normTag, nettoyerSemisSpaces, DUREE_CORBEILLE } from './db.js'
 import { construireIndex, rechercher } from './recherche.js'
 import { ajouterMediaDepuisFichier, estMediaSupporte, estFichierOcr, injecterOcr, ocrEnFond } from './ajout-media.js'
 import { sync_configuree, API_BASE } from './config.js'
@@ -876,6 +876,20 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
           </div>
         </aside>
       </div>
+
+      {/* Barre « Infos » du TÉLÉPHONE. Enfant DIRECT du voile et posée en FLUX
+          (dernier élément de la colonne flex) : elle est donc dockée en bas par
+          construction, sans `position:fixed` — c'est ce qui la faisait flotter
+          au milieu de l'écran dès que le contenu défilait. Masquée ≥ 768 px, où
+          c'est l'onglet vertical `.detail-onglet` qui prend le relais. */}
+      <button
+        className="detail-barre-infos"
+        onClick={e => { e.stopPropagation(); setPanneauOuvert(o => !o) }}
+        aria-label={panneauOuvert ? 'Masquer le panneau d’infos' : 'Afficher le panneau d’infos'}
+      >
+        <span className="detail-onglet-fleche">{panneauOuvert ? '›' : '‹'}</span>
+        <span className="detail-onglet-txt">Infos</span>
+      </button>
     </div>
   )
 }
@@ -1640,10 +1654,12 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Recrée UNE FOIS les 22 spaces « mymind » (listes intelligentes par tag),
-  // puis synchronise pour les propager aux autres appareils.
+  // Un coffre neuf doit être VIDE : plus aucun espace n'est semé au démarrage
+  // (les 22 spaces mymind sont l'historique de Fred, ils redescendent de SON
+  // Drive). On efface une fois ceux qu'un ancien build aurait déjà semés dans
+  // un coffre encore sans contenu — localement, sans rien propager au Drive.
   useEffect(() => {
-    semerSpacesMymind().then(n => { if (n) syncRef.current?.() }).catch(() => {})
+    nettoyerSemisSpaces().catch(() => {})
   }, [])
 
   // Données : sépare espaces / contenu, calcule les tags. Ce chargement
