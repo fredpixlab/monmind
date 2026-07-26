@@ -1434,7 +1434,7 @@ function ImportMymind({ pret, brancher, fermer, onModif }) {
 }
 
 // --- Vue Statistiques + diagnostic -------------------------------
-function VueStats({ contenu, tousTags, espaces, ocr, onOuvrir }) {
+function VueStats({ contenu, tousTags, espaces, ocr, onOuvrir, sync }) {
   const s = useMemo(() => calculerStats(contenu, tousTags, espaces, ocr), [contenu, tousTags, espaces, ocr])
 
   // --- Ménage des tags (labels de vision hérités de mymind) ---------
@@ -1473,7 +1473,19 @@ function VueStats({ contenu, tousTags, espaces, ocr, onOuvrir }) {
       if (i % 20 === 0 || i === liste.length - 1) setAvancement({ fait: i + 1, total: liste.length })
     }
     setMenage(null)
-    setAvancement({ fait: liste.length, total: liste.length, fini: true })
+    // ⚠️ La poussée vers Drive doit être déclenchée EXPLICITEMENT. `majCarte`
+    // se contente d'écrire en local ; ailleurs dans l'app c'est l'appelant qui
+    // enchaîne sur `sync.planifier()`. Sans cet appel, 1329 cartes restaient
+    // modifiées en local sans jamais partir (la synchro périodique ne repart
+    // pas non plus si la session Drive a expiré entre-temps).
+    setAvancement({ fait: liste.length, total: liste.length, poussee: true })
+    try {
+      await sync?.lancer?.()
+      setAvancement({ fait: liste.length, total: liste.length, fini: true })
+    } catch (e) {
+      console.error('[menage/sync]', e)
+      setAvancement({ fait: liste.length, total: liste.length, fini: true, echecSync: true })
+    }
   }
 
   const tuiles = [
@@ -1608,6 +1620,12 @@ function VueStats({ contenu, tousTags, espaces, ocr, onOuvrir }) {
                 <span className="menage-apres">{c.apres.join(', ') || '(aucun)'}</span>
               </p>
             ))}
+            {sync && (sync.etat === 'deconnecte' || sync.etat === 'inconnu') && (
+              <p className="stats-note menage-alerte">
+                ⚠️ Drive n'est pas connecté : le nettoyage resterait sur cet appareil.
+                Reconnecte-le d'abord (bouton « Drive » dans la colonne de gauche).
+              </p>
+            )}
             <div className="menage-actions">
               <button className="bouton-principal" onClick={appliquerTags}
                       disabled={menage.vocab.deMymind === 0}>
@@ -1619,10 +1637,14 @@ function VueStats({ contenu, tousTags, espaces, ocr, onOuvrir }) {
         )}
 
         {avancement && (
-          <p className="stats-note">
-            {avancement.fini
-              ? `✓ ${avancement.total} cartes nettoyées. La synchronisation vers Drive se fait carte par carte : laisse l'app ouverte, elle peut prendre une vingtaine de minutes.`
-              : `Nettoyage… ${avancement.fait} / ${avancement.total}`}
+          <p className={'stats-note' + (avancement.echecSync ? ' menage-alerte' : '')}>
+            {!avancement.fini && !avancement.poussee && `Nettoyage… ${avancement.fait} / ${avancement.total}`}
+            {avancement.poussee && !avancement.fini &&
+              `✓ ${avancement.total} cartes nettoyées en local. Envoi vers Drive en cours — laisse l'app ouverte.`}
+            {avancement.fini && !avancement.echecSync &&
+              `✓ ${avancement.total} cartes nettoyées et envoyées vers Drive.`}
+            {avancement.echecSync &&
+              `✓ ${avancement.total} cartes nettoyées en local, mais l'envoi vers Drive a échoué — reconnecte Drive (bouton dans la colonne de gauche), le renvoi se fera tout seul.`}
           </p>
         )}
       </div>
@@ -2220,7 +2242,7 @@ export default function App() {
         {/* ====== VUE STATISTIQUES ====== */}
         {vue === 'stats' && (
           <VueStats contenu={contenu} tousTags={tousTags} espaces={espaces} ocr={ocr}
-                    onOuvrir={(o) => setOuverte(o)} />
+                    onOuvrir={(o) => setOuverte(o)} sync={sync} />
         )}
       </div>
 
