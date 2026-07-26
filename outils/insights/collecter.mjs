@@ -12,6 +12,7 @@
 // ---------------------------------------------------------------
 import fs from 'fs'
 import path from 'path'
+import { canon } from './tags.mjs'
 
 const MARQUE_ARTICLE = '\n\n===MONCOFFRE-ARTICLE===\n'
 const TAG_PRIVE = 'private'
@@ -23,6 +24,12 @@ function arg(nom, defaut) {
 const SRC = arg('src', path.join(process.env.HOME, 'MonCoffre-insights/md'))
 const OUT = arg('out', path.join(process.env.HOME, 'MonCoffre-insights'))
 const EXTRAIT = parseInt(arg('extrait', '220'), 10)
+
+// Vocabulaire retenu (voir tags.mjs) : seuls les tags de SUJET entrent dans le
+// corpus. Sans ce filtre, les labels de vision de mymind (5087 sur 5443)
+// noient le signal et tirent le portrait vers le générique.
+const RETENUS = new Set(JSON.parse(fs.readFileSync(path.join(OUT, 'tags-retenus.json'), 'utf8')).corpus)
+
 
 // Même normalisation que l'app (db.js) : accents retirés, minuscules.
 const normTag = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase()
@@ -55,6 +62,16 @@ function extrait(s, n) {
   return (esp > n * 0.6 ? coupe.slice(0, esp) : coupe) + '…'
 }
 
+// L'OCR se termine souvent par la queue de labels d'Apple Vision collée après
+// le vrai texte lu (« CASERNE DES MINIMES - PARIS outdoor sky cloudy blue_sky
+// land road street »). Signature : au moins 4 mots consécutifs en minuscules,
+// sans ponctuation, en FIN de chaîne — une vraie phrase, elle, ponctue.
+function sansLabels(s) {
+  return String(s || '').trim()
+    .replace(/(?:\s+[a-z][a-z_-]{1,20}){4,}\s*$/, '')
+    .trim()
+}
+
 // ---- Lecture ---------------------------------------------------
 const fichiers = fs.readdirSync(SRC).filter(f => f.endsWith('.md'))
 const stat = {
@@ -72,9 +89,12 @@ for (const f of fichiers) {
   if (meta.type === 'espace') { stat.espaces++; continue }
   if (meta.supprime) { stat.supprimees++; continue }
 
-  const tags = (meta.tags || []).map(normTag).filter(Boolean)
+  const bruts = (meta.tags || []).map(normTag).filter(Boolean)
   // Règle de vie privée : une carte #private ne sort JAMAIS du coffre.
-  if (tags.includes(TAG_PRIVE)) { stat.privees++; continue }
+  // ⚠️ Testé sur les tags BRUTS, avant filtrage : `private` ne fait pas partie
+  // du vocabulaire retenu, il disparaîtrait du test si on filtrait d'abord.
+  if (bruts.includes(TAG_PRIVE)) { stat.privees++; continue }
+  const tags = [...new Set(bruts.map(canon).filter(t => RETENUS.has(t)))]
 
   const carte = {
     id: f.replace(/\.md$/, ''),
@@ -86,7 +106,7 @@ for (const f of fichiers) {
     tags,
     note: (meta.note || '').trim(),
     texte,
-    texteImage: (meta.texteImage || '').trim(),
+    texteImage: sansLabels(meta.texteImage),
     apercu: meta.apercu ? 1 : 0,
     article
   }
