@@ -3,3 +3,25 @@ dist/
 .DS_Store
 *.local
 _to_delete/
+
+# ---- Garde-fou : DÉPÔT PUBLIC (cf. CLAUDE.md) -----------------------
+# Les notes de travail vivent dans ~/Github/fred-ops/perso/monmind/.
+# Ces motifs empêchent qu'un fichier déposé ici par mégarde soit commité :
+# l'historique git étant définitif, la prévention est la seule protection.
+plan-attaque*.md
+GUIDE-*.md
+JOURNAL.md
+journal*.md
+notes*.md
+NOTES.md
+overview.md
+next-steps.md
+*-prive.md
+*.private.md
+
+# Données personnelles du coffre (corpus, vocabulaire de tags, sauvegardes).
+MonCoffre-insights/
+tags-retenus.json
+corpus*.md
+corpus*.jsonl
+*.tar.gz
