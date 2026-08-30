@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db, ajouterCarte, supprimerCarte, restaurerCarte, majCarte, estUneUrl, creerEspace, supprimerEspace, basculerEpingle, membresEspace, estMembreEspace, normTag, nettoyerSemisSpaces, DUREE_CORBEILLE } from './db.js'
-import { construireIndex, rechercher } from './recherche.js'
+import { construireIndex, rechercher, analyserRequete, filtrerRequete } from './recherche.js'
 import { ajouterMediaDepuisFichier, estMediaSupporte, estFichierOcr, injecterOcr, ocrEnFond } from './ajout-media.js'
 import { sync_configuree, API_BASE } from './config.js'
 import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion, telechargerMediaComplet, rafraichirJeton, purgerCarte, enregistrerSession, aSessionBackend, pousserVignette, reparerProvenance } from './drive.js'
@@ -177,17 +177,8 @@ function estCarteVide(c) {
 const TAG_PRIVE = 'private'
 function estPrivee(c) { return (c.tags || []).some(t => normTag(t) === TAG_PRIVE) }
 
-// Analyse la requête : les jetons « #tag » filtrent sur un tag EXACT (recherche
-// précise sur LE TAG, pas sur le mot où qu'il soit dans le contenu). Le reste est
-// du texte libre passé à MiniSearch. Ex. « #ia design » → tag « ia » + texte « design ».
-function analyserRequete(q) {
-  const tags = [], mots = []
-  for (const tok of (q || '').trim().split(/\s+/).filter(Boolean)) {
-    if (tok[0] === '#' && tok.length > 1) tags.push(normTag(tok.slice(1)))
-    else mots.push(tok)
-  }
-  return { tags: tags.filter(Boolean), texte: mots.join(' ') }
-}
+// `analyserRequete` (grammaire #tag / site: / "phrase" / -exclusion) et
+// `filtrerRequete` vivent désormais dans recherche.js, avec le moteur.
 
 // Statistiques + liste des cartes à revoir, calculées en mémoire. Les cartes
 // privées sont comptées à part (`privees`), hors des compteurs publics.
@@ -1853,7 +1844,8 @@ export default function App() {
   // classée par pertinence. Recalculée à chaque frappe, sans reconstruire l'index.
   const cartes = useMemo(() => {
     if (!base) return undefined // encore en chargement → évite un flash « vide »
-    const { tags: tagsRech, texte } = analyserRequete(recherche)
+    const req = analyserRequete(recherche)
+    const { tags: tagsRech, texte } = req
     const veutPrive = tagsRech.includes(TAG_PRIVE)
     // Les cartes privées sont cachées PARTOUT, sauf si on cherche « #private ».
     let liste = veutPrive ? contenu : contenuPublic
@@ -1869,7 +1861,10 @@ export default function App() {
         return tagsRech.every(t => set.includes(t))
       })
     }
-    // Le reste de la requête = texte libre → MiniSearch (classé par pertinence).
+    // Filtres DURS de la grammaire : site:, "phrase exacte", -exclusion.
+    liste = filtrerRequete(liste, req)
+    // Le reste de la requête = texte libre → MiniSearch (classé par pertinence),
+    // complété par la passe « collée » (noms soudés : domaines, tags).
     const ordre = texte ? rechercher(index, texte) : null
     if (ordre) {
       const rang = new Map(ordre.map((id, i) => [id, i]))
@@ -2088,9 +2083,24 @@ export default function App() {
               )}
               {!recherche && (
                 <p className="hero-astuce">
-                  Astuce : <code>#tag</code> cherche un tag précis (ex. <code>#recipe</code>, <code>#ia</code>) —
-                  plutôt que le mot où qu'il soit dans le contenu.
+                  Pour cibler : <code>#tag</code> · <code>site:lemonde.fr</code> ·{' '}
+                  <code>"phrase exacte"</code> · <code>-motÀExclure</code>
                 </p>
+              )}
+              {/* Aide affichée AU MOMENT où elle sert : quand la recherche ne
+                  ramène rien. Les mots sont combinés en ET — c'est presque
+                  toujours un mot de trop qui vide la liste. */}
+              {recherche.trim() && cartes && cartes.length === 0 && (
+                <div className="hero-aide">
+                  <p><strong>Aucun résultat.</strong> Tous les mots doivent être présents (ET).
+                    Retire un mot, ou cible :</p>
+                  <ul>
+                    <li><code>#ia</code> — la carte porte ce tag</li>
+                    <li><code>site:legrandcontinent.eu</code> — les liens de ce site</li>
+                    <li><code>"sam altman"</code> — cette suite de mots, dans cet ordre</li>
+                    <li><code>ia -openai</code> — écarte les cartes contenant « openai »</li>
+                  </ul>
+                </div>
               )}
             </div>
 

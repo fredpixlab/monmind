@@ -179,6 +179,20 @@ body {
   padding: 1px 6px; border-radius: 6px; font-size: 12px;
 }
 
+/* Aide de recherche : n'apparaît que quand la requête ne ramène rien. */
+.hero-aide {
+  margin: 14px auto 0; max-width: 560px; text-align: left;
+  background: hsla(228, 20%, 50%, .06); border-radius: 14px;
+  padding: 14px 18px; font-size: 13px; color: var(--encre-2); line-height: 1.6;
+}
+.hero-aide p { margin: 0 0 8px; }
+.hero-aide ul { margin: 0; padding-left: 18px; }
+.hero-aide li { margin: 3px 0; }
+.hero-aide code {
+  background: hsl(228, 16%, 92%); color: var(--encre-2);
+  padding: 1px 6px; border-radius: 6px; font-size: 12px;
+}
+
 /* ---------- Fil d'espace actif ---------- */
 
 .fil-espace {
