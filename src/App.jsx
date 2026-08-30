@@ -1880,6 +1880,18 @@ export default function App() {
     return liste
   }, [base, contenu, contenuPublic, index, recherche, tagActif, espaceActif, espaces])
 
+  // Carte ouverte « VIVANTE ». `ouverte` garde un INSTANTANÉ de la carte pris au
+  // moment du clic ; si la carte change ensuite dans la base (capture d'article,
+  // aperçu enrichi, espaces…), le panneau continuerait d'afficher l'ancienne
+  // version — la capture semblait alors ne rien faire. On relit donc la carte
+  // dans la liste vivante (`contenu`, alimentée par Dexie/useLiveQuery) à chaque
+  // rendu. Repli sur l'instantané si elle n'y est pas (carte de la corbeille).
+  const ouverteVive = useMemo(() => {
+    if (!ouverte) return null
+    const frais = contenu.find(c => c.id === ouverte.carte.id)
+    return frais ? { ...ouverte, carte: frais } : ouverte
+  }, [ouverte, contenu])
+
   useEffect(() => {
     if (espaceActif && !espaces.some(e => e.id === espaceActif)) setEspaceActif(null)
   }, [espaces, espaceActif])
@@ -2258,11 +2270,11 @@ export default function App() {
           onModif={sync.planifier}
         />
       )}
-      {ouverte && (
+      {ouverteVive && (
         <Detail
-          key={ouverte.carte.id}
-          carte={ouverte.carte}
-          src={ouverte.src}
+          key={ouverteVive.carte.id}
+          carte={ouverteVive.carte}
+          src={ouverteVive.src}
           espaces={espaces}
           tousTags={tousTags}
           fermer={() => setOuverte(null)}
