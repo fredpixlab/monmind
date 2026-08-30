@@ -390,15 +390,21 @@ export async function pousserVignette(driveVignetteId, cardId, vignetteBlob) {
     vignetteBlob, 'image/jpeg')
 }
 
-// Pousse une carte importée SANS média (note / lien) : juste le .md.
+// Pousse UNE carte sans média (note / lien) : juste le .md. Envoi CIBLÉ —
+// trois appels réseau, pas le grand parcours de `synchroniser()` (qui liste
+// les 5 000+ fichiers du Drive). C'est ce qu'utilise la fenêtre de capture,
+// qui ne vit que deux secondes.
+// On mémorise l'id Drive sur la carte locale : sans ça, la synchro suivante
+// réenverrait un second .md pour la même carte.
 export async function pousserCarteTexte(carte) {
   await jetonValide()
   await garantirDossiers()
   const contenu = serialiserMd(carte, '')
-  const md = await televerser(null,
+  const md = await televerser(carte.driveMdId || null,
     { name: `${carte.id}.md`, parents: [cartesId],
       appProperties: { cardId: carte.id, modifieLe: String(carte.modifieLe), type: carte.type } },
     new Blob([contenu]), 'text/markdown')
+  await db.cartes.update(carte.id, { driveMdId: md.id }).catch(() => {})
   return { driveMdId: md.id }
 }
 

@@ -4,7 +4,7 @@ import { db, ajouterCarte, supprimerCarte, restaurerCarte, majCarte, estUneUrl, 
 import { construireIndex, rechercher, analyserRequete, filtrerRequete } from './recherche.js'
 import { ajouterMediaDepuisFichier, estMediaSupporte, estFichierOcr, injecterOcr, ocrEnFond } from './ajout-media.js'
 import { sync_configuree, API_BASE } from './config.js'
-import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion, telechargerMediaComplet, rafraichirJeton, purgerCarte, enregistrerSession, aSessionBackend, pousserVignette, reparerProvenance } from './drive.js'
+import { initAuth, connecter, estDejaConnecte, deconnecter, synchroniser, BesoinReconnexion, telechargerMediaComplet, rafraichirJeton, purgerCarte, enregistrerSession, aSessionBackend, pousserVignette, pousserCarteTexte, reparerProvenance } from './drive.js'
 import { vignetteVideo } from './vignette.js'
 import { construireVocabulaire, analyserNettoyage } from './vocabulaire.js'
 import { lancerImport } from './import-run.js'
@@ -1200,20 +1200,45 @@ function lireCapture() {
   }
 }
 
-function CaptureExt() {
+// Écran de CAPTURE — monté par main.jsx À LA PLACE de l'app, dans la petite
+// fenêtre ouverte par le marque-page (`?c=1&popup=1`) ou par l'extension
+// (`?via=ext`). Cette fenêtre vit deux secondes : elle écrit une carte et se
+// referme. Elle ne doit donc RIEN démarrer de l'app.
+//
+// ⚠️ La synchro Drive se fait ici UNIQUEMENT via la session backend
+// (`aSessionBackend` → jeton servi par le Worker). Jamais par GIS : le
+// renouvellement « silencieux » de Google ouvre une vraie fenêtre
+// accounts.google.com sur Firefox, qu'on refermait aussitôt. Sans session
+// backend, la carte reste locale et repart à la prochaine ouverture de l'app
+// DANS CE NAVIGATEUR (IndexedDB n'est pas partagé entre navigateurs).
+export function EcranCapture() {
   const [carte, setCarte] = useState(null)
   const [erreur, setErreur] = useState(false)
+  const [local, setLocal] = useState(false)   // gardé, mais pas encore synchronisé
   useEffect(() => {
     let fait = false
     const traiter = async (cap) => {
       if (fait) return
       fait = true
+      // Variable locale, pas l'état React : la fermeture capture la valeur du
+      // premier rendu, `local` y vaudrait toujours false.
+      let resteLocal = true
       try {
         const c = await creerCarteLien(cap)
         setCarte(c)
-        if (sync_configuree() && await estDejaConnecte()) synchroniser().catch(() => {})
-      } catch (e) { console.error('[capture-ext]', e); setErreur(true) }
+        // Envoi CIBLÉ (un seul fichier) et seulement avec une session backend :
+        // pas de synchro complète — elle liste tout le Drive — et pas de GIS,
+        // dont le renouvellement « silencieux » ouvre une fenêtre Google.
+        if (sync_configuree() && await aSessionBackend()) {
+          try { await pousserCarteTexte(c); resteLocal = false } catch { /* on garde en local */ }
+        }
+      } catch (e) { console.error('[capture]', e); setErreur(true) }
+      setLocal(resteLocal)
+      if (cap.popup) setTimeout(() => window.close(), resteLocal ? 2600 : 1400)
     }
+    // Deux sources : le canal de l'extension, ou les paramètres de l'URL.
+    const viaUrl = lireCapture()
+    if (viaUrl) { traiter({ ...viaUrl, image: viaUrl.apercu, texte: viaUrl.note }); return }
     if (_extCapture) traiter(_extCapture)
     _extListener = traiter
     return () => { _extListener = null }
@@ -1226,6 +1251,7 @@ function CaptureExt() {
         <>
           <h2>Gardé dans MonCoffre ✓</h2>
           <p className="ce-titre">{carte.titre || carte.url}</p>
+          {local && <p className="ce-etat">Synchro à la prochaine ouverture de l'app.</p>}
         </>
       )}
       {erreur && <p className="ce-etat">Impossible de garder cette page.</p>}
@@ -1975,7 +2001,9 @@ export default function App() {
   }
   function ouvrirEspace(e) { setEspaceActif(e.id); setTagActif(null); setVue('tout') }
 
-  if (modeExt) return <CaptureExt />
+  // Filet de sécurité : normalement main.jsx monte `EcranCapture` À LA PLACE
+  // de l'app et on n'arrive jamais ici en mode extension.
+  if (modeExt) return <EcranCapture />
 
   const espaceCourant = espaceActif ? espaces.find(e => e.id === espaceActif) : null
 
