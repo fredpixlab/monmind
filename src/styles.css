@@ -641,6 +641,8 @@ body {
   background: white; outline: none;
 }
 .note-editeur:focus { border-color: hsl(255, 50%, 72%); }
+/* Carte note : ajouter une image (la carte devient une carte image). */
+.dp-ajout-image { margin-top: 10px; font-size: 13px; padding: 7px 14px; }
 
 .espaces-editeur { display: flex; flex-wrap: wrap; gap: 8px; }
 .espace-toggle {

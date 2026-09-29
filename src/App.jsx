@@ -564,16 +564,49 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
   const brouillon = useRef(null)
   brouillon.current = {
     note, titre: titreEdit.trim(), tag: nouveauTag.trim().toLowerCase(),
-    tags, carte, onModif
+    tags, carte, onModif, champNote
   }
   useEffect(() => () => {
     const b = brouillon.current
     const maj = {}
-    if (b.note !== (b.carte[champNote] || '')) maj[champNote] = b.note
+    // `champNote` lu dans la ref : il change si la note devient une image.
+    if (b.note !== (b.carte[b.champNote] || '')) maj[b.champNote] = b.note
     if (b.titre !== (b.carte.titre || '')) maj.titre = b.titre
     if (b.tag && !b.tags.includes(b.tag)) maj.tags = [...b.tags, b.tag]
     if (Object.keys(maj).length) majCarte(b.carte.id, maj).then(() => b.onModif && b.onModif())
   }, [])
+  // Note → image : coller (ou choisir) une image dans une carte « note » la
+  // TRANSFORME en carte image. Une carte n'a qu'un type ; c'est exactement ce
+  // que produit déjà le « + » quand on met une image ET un texte. Le texte de
+  // la note passe dans le champ « Note » de l'image (visible, éditable,
+  // cherchable). La synchro enverra l'image vers Drive au prochain passage
+  // (carte avec `image` et sans `driveImgId`) — seule CETTE carte repart.
+  const choixImageRef = useRef(null)
+  const [conversion, setConversion] = useState(false)
+  async function transformerEnImage(fichier) {
+    if (carte.type !== 'note' || conversion || !fichier || !fichier.type.startsWith('image/')) return
+    setConversion(true)
+    try {
+      // `note` (l'état du champ) contient le texte EN COURS, même non enregistré.
+      const texteNote = [note.trim(), (carte.note || '').trim()].filter(Boolean).join('\n\n')
+      await majCarte(carte.id, { type: 'image', image: fichier, note: texteNote, texte: '' })
+      setNote(texteNote)
+      ocrEnFond(carte.id, fichier)   // texte lisible dans l'image → cherchable
+      onModif && onModif()
+    } finally { setConversion(false) }
+  }
+  // Écoute le collage sur toute la fenêtre (le champ note compris, par
+  // remontée) : Cmd+V sur Mac, « Coller » sur iPad. Seulement si le
+  // presse-papier contient une IMAGE — un collage de texte reste normal.
+  useEffect(() => {
+    if (carte.type !== 'note') return
+    const surCollage = e => {
+      const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'))
+      if (item) { e.preventDefault(); transformerEnImage(item.getAsFile()) }
+    }
+    window.addEventListener('paste', surCollage)
+    return () => window.removeEventListener('paste', surCollage)
+  })
   function basculerEspace(id) {
     const epingler = !mesEspaces.includes(id)
     basculerEpingle({ ...carte, espaces: mesEspaces }, id, epingler)
@@ -826,6 +859,19 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
               className="note-editeur" placeholder="Écris une note…"
               value={note} onChange={e => setNote(e.target.value)} onBlur={sauverNote}
             />
+            {carte.type === 'note' && (
+              <>
+                {/* Bouton en plus du collage : sur iPad, le menu « Coller »
+                    n'apparaît pas toujours pour une image dans un champ texte.
+                    Le sélecteur de fichiers iOS propose Photos / Appareil photo. */}
+                <button className="bouton-second dp-ajout-image" disabled={conversion}
+                        onClick={() => choixImageRef.current?.click()}>
+                  {conversion ? 'Ajout…' : '🖼 Ajouter une image'}
+                </button>
+                <input ref={choixImageRef} type="file" accept="image/*" hidden
+                       onChange={e => { transformerEnImage(e.target.files?.[0]); e.target.value = '' }} />
+              </>
+            )}
 
             {espaces.length > 0 && (
               <>
