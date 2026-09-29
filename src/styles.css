@@ -1091,3 +1091,58 @@ body {
 .menage-alerte { color: hsl(6, 60%, 44%); }
 .menage-secondaire { margin-top: 14px; font-size: 13px; }
 .menage-secondaire .tags-plus { margin: 0 0 0 4px; text-decoration: underline; }
+
+/* ---------- Légende sous le média (note d'une image / vidéo / lien) ----------
+   Le média et sa légende forment une COLONNE (`.dc-figure`) qui défile quand la
+   légende est dépliée. La légende ne compte pas dans la largeur de la colonne
+   (`width:0; min-width:100%`) : c'est le média qui dicte la largeur, le texte
+   s'y adapte au lieu d'élargir l'ensemble. */
+.dc-figure {
+  display: flex; flex-direction: column; align-items: stretch;
+  max-height: 92vh; overflow-y: auto; min-width: 0;
+  scrollbar-width: none;
+  /* Marge intérieure compensée : l'ombre du média n'est pas coupée net par
+     le bord de la zone qui défile. */
+  padding: 60px; margin: -60px;
+}
+.dc-figure .dc-image-nue, .dc-figure .dc-video { box-shadow: 0 16px 40px hsla(0,0%,0%,.4); }
+.dc-figure::-webkit-scrollbar { display: none; }
+.dc-figure:has(.dc-legende) .dc-image-nue,
+.dc-figure:has(.dc-legende) .dc-video { max-height: calc(92vh - 190px); }
+.dc-legende {
+  width: 0; min-width: 100%; margin-top: 14px; flex: none;
+  position: relative;   /* passe AU-DESSUS de l'ombre portée du média */
+  background: hsla(228, 30%, 98%, .97); border-radius: 14px;
+  padding: 18px 22px 14px; box-shadow: 0 14px 40px hsla(0, 0%, 0%, .25);
+}
+.dc-legende-texte {
+  margin: 0; font-family: var(--serif); font-size: 18px; line-height: 1.6;
+  color: var(--encre); white-space: pre-wrap; overflow-wrap: anywhere;
+  max-height: calc(1.6em * 4); overflow: hidden;
+}
+.dc-legende.tronquee .dc-legende-texte {
+  -webkit-mask-image: linear-gradient(to bottom, #000 55%, transparent);
+          mask-image: linear-gradient(to bottom, #000 55%, transparent);
+}
+.dc-legende.ouverte .dc-legende-texte { max-height: none; }
+.dc-legende-suite {
+  margin-top: 8px; padding: 2px 0; border: none; background: none; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--encre-2);
+}
+.dc-legende-suite:hover { color: var(--encre); }
+/* Dans une carte lien (déjà un fond clair) : pas de seconde carte. */
+.dc-carte .dc-legende { width: auto; box-shadow: none; padding: 16px 0 0; background: none;
+  border-top: 1px solid var(--trait); border-radius: 0; margin-top: 18px; }
+
+/* Champ Note du panneau : grandit avec le texte (hauteur posée en JS). */
+.dp-haut .note-editeur { resize: none; overflow: hidden; }
+/* …mais plafonné : au-delà, il défile, pour laisser voir les espaces dessous. */
+.dp-haut .note-editeur.long { max-height: 42vh; overflow-y: auto; }
+
+/* Espaces repliés : bouton pour afficher la liste complète. */
+.espaces-deplier {
+  border: 1px dashed var(--trait); background: none; cursor: pointer;
+  color: var(--encre-2); border-radius: 999px; padding: 6px 13px;
+  font: inherit; font-size: 13px; font-weight: 500;
+}
+.espaces-deplier:hover { color: var(--encre); border-style: solid; }

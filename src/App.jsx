@@ -313,6 +313,37 @@ function RenduLecture({ texte }) {
 }
 
 // --- Vue DÉTAIL plein écran (façon mymind) -----------------------
+// Légende sous le média : la NOTE d'une image / vidéo / lien, en typographie de
+// lecture. Repliée à ~4 lignes (fondu) avec « Lire la suite », dépliable. On
+// mesure le débordement réel (ResizeObserver, cf. piège (r)) pour ne montrer
+// le bouton que si le texte dépasse vraiment.
+function Legende({ texte }) {
+  const [ouverte, setOuverte] = useState(false)
+  const [deborde, setDeborde] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const mesurer = () => setDeborde(el.scrollHeight > el.clientHeight + 2 || ouverte)
+    mesurer()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(mesurer)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [texte, ouverte])
+  if (!texte.trim()) return null
+  return (
+    <div className={'dc-legende' + (ouverte ? ' ouverte' : '') + (deborde && !ouverte ? ' tronquee' : '')}>
+      <p ref={ref} className="dc-legende-texte">{texte.trim()}</p>
+      {deborde && (
+        <button className="dc-legende-suite" onClick={() => setOuverte(o => !o)}>
+          {ouverte ? 'Réduire ▴' : 'Lire la suite ▾'}
+        </button>
+      )}
+    </div>
+  )
+}
+
 function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSupprimer, onNaviguer }) {
   const [tags, setTags] = useState(carte.tags || [])
   const [nouveauTag, setNouveauTag] = useState('')
@@ -582,6 +613,20 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
   // cherchable). La synchro enverra l'image vers Drive au prochain passage
   // (carte avec `image` et sans `driveImgId`) — seule CETTE carte repart.
   const choixImageRef = useRef(null)
+  // Champ Note qui GRANDIT avec son contenu (au lieu d'une petite boîte à
+  // défilement). `field-sizing: content` n'existe pas encore sur Safari → on
+  // recalcule la hauteur à chaque changement de texte ou d'ouverture du panneau.
+  const noteRef = useRef(null)
+  useEffect(() => {
+    const el = noteRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = el.scrollHeight + 2 + 'px'
+    el.classList.toggle('long', el.scrollHeight > window.innerHeight * 0.42)
+  }, [note, panneauOuvert])
+  // Espaces : repliés par défaut (seuls ceux où la carte est rangée sont
+  // visibles) ; « Ranger dans un espace » déplie la liste complète.
+  const [espacesDeplies, setEspacesDeplies] = useState(false)
   const [conversion, setConversion] = useState(false)
   async function transformerEnImage(fichier) {
     if (carte.type !== 'note' || conversion || !fichier || !fichier.type.startsWith('image/')) return
@@ -692,6 +737,7 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
                               onError={e => { e.currentTarget.style.display = 'none' }} />
               )}
               {carte.texte && <div className="dc-texte">{carte.texte}</div>}
+              <Legende texte={note} />
 
               {peutCapturer && (
                 <div className="dc-lecture">
@@ -727,6 +773,7 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
             </div>
           )}
           {carte.type === 'image' && image && (
+            <div className="dc-figure">
             <div className="dc-image-enveloppe">
               <img className="dc-image-nue" src={image} alt={carte.texte || 'Image'} />
               {aMediaDrive && chargePlein && !pleinSrc && (
@@ -737,6 +784,8 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
                   Aperçu — HD indisponible, reconnecte Drive
                 </span>
               )}
+            </div>
+            <Legende texte={note} />
             </div>
           )}
           {carte.type === 'pdf' && (
@@ -755,7 +804,8 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
             </div>
           )}
           {carte.type === 'video' && (
-            videoErreur ? (
+            <div className="dc-figure">
+            {videoErreur ? (
               <div className="dc-video-poster dc-video-echec">
                 {image && <img className="dc-image-nue" src={image} alt="" />}
                 <div className="dc-video-msg">
@@ -777,7 +827,9 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
                 {image && <img className="dc-image-nue" src={image} alt="" />}
                 <button className="play-badge grand" title="Lire la vidéo">{chargeMedia ? '…' : '▶'}</button>
               </div>
-            )
+            )}
+            <Legende texte={note} />
+            </div>
           )}
           {carte.type === 'note' && (
             <div className="dc-carte dc-note">
@@ -856,6 +908,7 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
 
             <div className="dp-label">Note</div>
             <textarea
+              ref={noteRef}
               className="note-editeur" placeholder="Écris une note…"
               value={note} onChange={e => setNote(e.target.value)} onBlur={sauverNote}
             />
@@ -883,6 +936,8 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
                     // Appartenance venant du TAG (pas d'un épinglage) → on le
                     // signale (le clic n'y change rien, c'est le tag qui décide).
                     const parTag = membre && !mesEspaces.includes(e.id)
+                    // Replié : on ne montre que les espaces où la carte est rangée.
+                    if (!espacesDeplies && !membre) return null
                     return (
                       <button
                         key={e.id}
@@ -892,6 +947,9 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
                       >{membre ? '✓ ' : '+ '}{e.titre}</button>
                     )
                   })}
+                  <button className="espaces-deplier" onClick={() => setEspacesDeplies(v => !v)}>
+                    {espacesDeplies ? 'Réduire ▴' : '+ Ranger dans un espace ▾'}
+                  </button>
                 </div>
               </>
             )}
