@@ -690,6 +690,13 @@ body {
   /* Cartes lien / note : largeur fixe (l'image, elle, dicte sa propre taille). */
   .dc-carte { width: min(620px, 56vw); }
 
+  /* L'onglet dépasse d'environ 56 px à droite du média. Sans place réservée,
+     une image large (qui remplit toute la largeur — cas courant sur iPad)
+     poussait l'onglet HORS de l'écran → plus aucun accès au titre, aux tags
+     ni à la note. On réserve donc cette marge des deux côtés (centrage gardé)
+     tant que le panneau est fermé. */
+  .detail-scene:not(.panneau-ouvert) { padding-inline: 60px; }
+
   /* Panneau : caché quand fermé, en flux (colonne) quand ouvert. */
   .detail-scene:not(.panneau-ouvert) .detail-panneau { display: none; }
   .detail-scene.panneau-ouvert .detail-panneau { animation: panneau-entre .28s ease both; }

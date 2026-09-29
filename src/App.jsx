@@ -554,6 +554,26 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
     const t = titreEdit.trim()
     if (t !== (carte.titre || '')) majCarte(carte.id, { titre: t }).then(onModif)
   }
+  // ⚠️ iPad / iPhone : Safari ne donne PAS le focus à un bouton qu'on touche.
+  // Toucher × (ou le fond, ou glisser vers la carte suivante) démonte donc le
+  // panneau SANS que le champ en cours perde le focus → `onBlur` ne part jamais
+  // et la saisie était perdue en silence. On garde les brouillons dans une ref
+  // (toujours à jour) et on les enregistre au DÉMONTAGE du panneau, quelle que
+  // soit la façon de le quitter. Si `onBlur` a déjà enregistré, les valeurs
+  // sont identiques → rien n'est réécrit.
+  const brouillon = useRef(null)
+  brouillon.current = {
+    note, titre: titreEdit.trim(), tag: nouveauTag.trim().toLowerCase(),
+    tags, carte, onModif
+  }
+  useEffect(() => () => {
+    const b = brouillon.current
+    const maj = {}
+    if (b.note !== (b.carte[champNote] || '')) maj[champNote] = b.note
+    if (b.titre !== (b.carte.titre || '')) maj.titre = b.titre
+    if (b.tag && !b.tags.includes(b.tag)) maj.tags = [...b.tags, b.tag]
+    if (Object.keys(maj).length) majCarte(b.carte.id, maj).then(() => b.onModif && b.onModif())
+  }, [])
   function basculerEspace(id) {
     const epingler = !mesEspaces.includes(id)
     basculerEpingle({ ...carte, espaces: mesEspaces }, id, epingler)
