@@ -91,10 +91,15 @@ body {
   background: var(--degrade); animation: respiration 1.2s ease-in-out infinite;
 }
 
+/* La zone est CENTRÉE dans l'espace laissé libre par le rail : le rail fait
+   partie du padding gauche, donc `margin-inline: auto` laisse exactement
+   autant de vide à gauche qu'à droite de la mosaïque. Elle s'étire jusqu'à
+   ~7 colonnes de 340 px (cf. calcColonnes dans App.jsx) avant de plafonner. */
 .zone {
-  margin-left: var(--rail);
+  margin-inline: auto;
   padding: 0 32px 120px;
-  max-width: 1500px;
+  padding-left: calc(var(--rail) + 32px);
+  max-width: calc(2560px + var(--rail));
 }
 
 /* ---------- Navigation haute ---------- */
@@ -229,7 +234,7 @@ body {
 /* ---------- Mosaïque de cartes ---------- */
 
 .grille {
-  columns: 4 285px;          /* cartes plus grandes par défaut (max 4 colonnes) */
+  columns: 7 285px;          /* cartes plus grandes par défaut (max 7 colonnes) */
   column-gap: 24px;
   padding: 4px 8px;
 }
@@ -922,7 +927,7 @@ body {
   }
   .rail-marque { writing-mode: horizontal-tb; transform: none; }
   .rail-bas { margin: 0 0 0 auto; flex-direction: row; }
-  .zone { margin-left: 0; padding: 0 18px 100px; }
+  .zone { padding: 0 18px 100px; padding-left: calc(var(--rail) + 18px); }
   .grille { columns: 2 150px; column-gap: 14px; }
   .grille-cols { gap: 14px; padding: 4px 0; }
   .grille-col { gap: 16px; }

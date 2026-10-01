@@ -124,8 +124,20 @@ function useSrcImage(carte) {
   return src
 }
 
-// Nombre de colonnes de la mosaïque selon la largeur de l'écran.
-function calcColonnes(w) { return w < 560 ? 2 : w < 900 ? 3 : 4 }
+// Nombre de colonnes de la mosaïque selon la largeur de l'écran. Au-delà des
+// petits écrans on ne fige plus 4 colonnes : on vise une carte d'environ 340 px
+// et on en ajoute autant que la place le permet (jusqu'à 7), pour qu'un grand
+// écran serve à voir PLUS de cartes plutôt qu'à afficher du vide. Le plafond
+// 2560 px est le même que le max-width de .zone — au-delà, la zone est centrée.
+const CARTE_IDEALE = 340, GOUTTIERE = 24, ZONE_MAX = 2560
+function calcColonnes(w) {
+  if (w < 560) return 2
+  if (w < 900) return 3
+  // largeur réellement offerte aux cartes : écran (plafonné) − rail − paddings
+  const dispo = Math.min(w, ZONE_MAX + 60) - 60 - 64 - 16
+  const n = Math.round((dispo + GOUTTIERE) / (CARTE_IDEALE + GOUTTIERE))
+  return Math.min(7, Math.max(4, n))
+}
 function useNbColonnes() {
   const [n, setN] = useState(() => calcColonnes(typeof window !== 'undefined' ? window.innerWidth : 1200))
   useEffect(() => {
