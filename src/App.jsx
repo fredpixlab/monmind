@@ -396,6 +396,16 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
   const [chargeMedia, setChargeMedia] = useState(false)
   const [videoErreur, setVideoErreur] = useState(false)
   const videoRef = useRef(null)
+  // Proportions de la vidéo (largeur / hauteur), lues sur l'aperçu puis sur la
+  // vidéo elle-même. Sans elles, le média s'affiche à sa taille NATIVE (une
+  // miniature de 640 px, une vieille vidéo basse définition) → minuscule sur
+  // grand écran. Le CSS s'en sert pour remplir la place disponible.
+  const [ratioVideo, setRatioVideo] = useState(null)
+  function mesurerVideo(e) {
+    const el = e.currentTarget
+    const w = el.videoWidth || el.naturalWidth, h = el.videoHeight || el.naturalHeight
+    if (w && h) setRatioVideo(w / h)
+  }
   // Panneau d'infos (tags / note / espaces) : FERMÉ par défaut sur desktop, il
   // glisse depuis la droite quand on tire l'onglet. Sur mobile il reste sous le
   // média (voir CSS) et cet état n'a aucun effet. L'état PERSISTE quand on
@@ -816,10 +826,11 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
             </div>
           )}
           {carte.type === 'video' && (
-            <div className="dc-figure">
+            <div className={'dc-figure' + (ratioVideo ? ' dc-figure-video' : '')}
+                 style={ratioVideo ? { '--ratio': ratioVideo } : undefined}>
             {videoErreur ? (
               <div className="dc-video-poster dc-video-echec">
-                {image && <img className="dc-image-nue" src={image} alt="" />}
+                {image && <img className="dc-image-nue" src={image} alt="" onLoad={mesurerVideo} />}
                 <div className="dc-video-msg">
                   <p>Cette vidéo ne se lit pas directement ici.</p>
                   <div className="dc-video-actions">
@@ -833,10 +844,11 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
               </div>
             ) : videoSrc ? (
               <video ref={videoRef} className="dc-video" src={videoSrc} controls autoPlay playsInline
+                     onLoadedMetadata={mesurerVideo}
                      onError={() => { setVideoSrc(null); setVideoErreur(true) }} />
             ) : (
               <div className="dc-video-poster" onClick={chargerVideo}>
-                {image && <img className="dc-image-nue" src={image} alt="" />}
+                {image && <img className="dc-image-nue" src={image} alt="" onLoad={mesurerVideo} />}
                 <button className="play-badge grand" title="Lire la vidéo">{chargeMedia ? '…' : '▶'}</button>
               </div>
             )}

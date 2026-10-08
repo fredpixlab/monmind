@@ -1151,3 +1151,31 @@ body {
   font: inherit; font-size: 13px; font-weight: 500;
 }
 .espaces-deplier:hover { color: var(--encre); border-style: solid; }
+
+/* ---------- Vidéo de la vue détail : agrandie jusqu'à remplir la place ----------
+   Sans ça, vidéo et aperçu gardent leur taille native (miniature ≤ 640 px,
+   vidéo basse définition) et flottent, minuscules, au milieu de l'écran.
+   `--ratio` (largeur / hauteur) est posé par le composant dès qu'il le connaît.
+   La scène desktop est dimensionnée par son CONTENU (`width:auto`) : un % ne
+   peut rien agrandir, on raisonne donc en unités d'écran. Largeur du média =
+   la plus petite entre la place dispo (`--wmax`) et celle qui fait atteindre la
+   hauteur maximale (`--hmax` × ratio). +120px = la marge intérieure compensée
+   de `.dc-figure` (padding 60 / margin -60). */
+.dc-figure-video {
+  --hmax: 92vh;
+  /* 92vw (voile 4vw de chaque côté) − 120px réservés à l'onglet ; plafond de
+     la scène 1240px. */
+  --wmax: min(1120px, 92vw - 120px);
+  flex: none;
+  width: calc(min(var(--wmax), var(--hmax) * var(--ratio)) + 120px);
+}
+/* Panneau d'infos ouvert : il prend 360px (≤ 42vw) + 46px d'écart. */
+.panneau-ouvert .dc-figure-video { --wmax: min(1240px, 92vw) - min(360px, 42vw) - 46px; }
+.dc-figure-video:has(.dc-legende) { --hmax: calc(92vh - 190px); }
+.dc-figure-video .dc-video,
+.dc-figure-video .dc-video-poster,
+.dc-figure-video .dc-video-poster .dc-image-nue { width: 100%; height: auto; }
+@media (max-width: 767px) {
+  .dc-figure-video, .dc-figure-video:has(.dc-legende),
+  .panneau-ouvert .dc-figure-video { --hmax: 78vh; --wmax: 100vw - 24px; }
+}
