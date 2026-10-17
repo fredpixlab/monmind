@@ -807,7 +807,7 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
                 </span>
               )}
             </div>
-            <Legende texte={note} />
+            <Legende texte={[carte.texte, note].filter(t => t && t.trim()).join('\n\n')} />
             </div>
           )}
           {carte.type === 'pdf' && (
@@ -852,7 +852,7 @@ function Detail({ carte, src, espaces = [], tousTags = [], fermer, onModif, onSu
                 <button className="play-badge grand" title="Lire la vidéo">{chargeMedia ? '…' : '▶'}</button>
               </div>
             )}
-            <Legende texte={note} />
+            <Legende texte={[carte.texte, note].filter(t => t && t.trim()).join('\n\n')} />
             </div>
           )}
           {carte.type === 'note' && (
