@@ -1180,3 +1180,9 @@ body {
   .dc-figure-video, .dc-figure-video:has(.dc-legende),
   .panneau-ouvert .dc-figure-video { --hmax: 78vh; --wmax: 100vw - 24px; }
 }
+
+/* Écrans tactiles : Safari iOS zoome sur tout champ < 16px au focus et ne
+   dézoome pas ensuite (ex. « + tag » du composeur après un ajout). */
+@media (pointer: coarse) {
+  input:not([type=file]):not([type=checkbox]):not([type=radio]), textarea, select { font-size: 16px !important; }
+}
